@@ -1,6 +1,12 @@
 #Persistent
 #NoEnv  ; Recommended for performance and compatibility with future AutoHotkey releases.
 #Warn  ; Enable warnings to assist with detecting common errors.
+#SingleInstance force ; Force erase previous instance
+
+
+DllCall("AllocConsole")
+WinHide % "ahk_id " DllCall("GetConsoleWindow", "ptr")
+
 SendMode Input  ; Recommended for new scripts due to its superior speed and reliability.
 SetWorkingDir %A_ScriptDir%  ; Ensures a consistent starting directory.
 
@@ -8,20 +14,12 @@ OnMessage(0x404, Func("clicOnNotif")) ; CLIC sur la notif pour ouvrir la GUI
 
 ; IMPORT / EXPORT des fichiers annexes pour version compilée
 FileCreateDir,  medias
-FileCreateDir,  scripts
-FileInstall, noSMS.ico, %A_WorkingDir%\medias\noSMS.ico
-FileInstall, more.ico, %A_WorkingDir%\medias\more.ico
-FileInstall, load.ico, %A_WorkingDir%\medias\load.ico
-FileInstall, net.ico, %A_WorkingDir%\medias\net.ico
-FileInstall, manage_sms.sh, %A_WorkingDir%\scripts\manage_sms.sh
+FileInstall, medias\noSMS.ico, %A_WorkingDir%\medias\noSMS.ico
+FileInstall, medias\more.ico, %A_WorkingDir%\medias\more.ico
+FileInstall, medias\load.ico, %A_WorkingDir%\medias\load.ico
+FileInstall, medias\net.ico, %A_WorkingDir%\medias\net.ico
+FileInstall, manage_sms.ps1, %A_WorkingDir%\manage_sms.ps1
 FileInstall, config_sample.ini, %A_WorkingDir%\config.ini
-
-; Transposition du chemin du script pour le BASH
-StringReplace , scriptPath, A_WorkingDir , : , 
-StringReplace , scriptPath, scriptPath , \ , / , All
-; lowercase first letter (partition letter)
-scriptPath = % RegExReplace(scriptPath, "^.", "$l0",,1)
-StringReplace , scriptPath, scriptPath , %A_Space% , \%A_Space% , All ; For paths with spaces
 
 
   ; ###   #   #   ###   #####
@@ -34,6 +32,7 @@ StringReplace , scriptPath, scriptPath , %A_Space% , \%A_Space% , All ; For path
 
 wifiStatus = 0
 lastIcon = noSMS
+data := {}
 helpText = Double-clic sur une ligne pour afficher et pouvoir sélectionner les détails du SMS dans cette zone
 
 ; ICONS
@@ -67,17 +66,13 @@ if(InStr(windowsVersion, "10")){
 }
 
 ; Initialisation personnalisée, le cas échéant, des variables globales
-IniRead, ipRouter, config.ini, main, ROUTER_IP
+IniRead, ipRouter, %A_WorkingDir%\config.ini, main, ROUTER_IP
 if(!ipRouter || !ValidIP(ipRouter)){
-	ipRouter = "192.168.8.1" ; Default IP
+	ipRouter = 192.168.8.1 ; Default IP
 }
-IniRead, loopDelay, config.ini, main, DELAY
+IniRead, loopDelay, %A_WorkingDir%\config.ini, main, DELAY
 if(!loopDelay || !RegExMatch(loopDelay,"^\d+$")){
 	loopDelay = 300000 ; Default Loop delay for check
-}
-IniRead, defaultSMS, config.ini, main, DEFAULTSMS
-if(!defaultSMS || !RegExMatch(defaultSMS,"^\d+$")){
-	defaultSMS = 
 }
 
 ; Création d'une liste d'icones système pour la ListView
@@ -100,10 +95,10 @@ Menu, tray, add, Envoyer un SMS, SendSMSGUI
 Menu, tray, add
 Menu, tray, add, Paramètres, openSettings
 Menu, tray, add
-Menu, tray, add, Ouvrir la page Web, Link
+Menu, tray, add, Ouvrir la page Web, openWebPage
 Menu, tray, add, Ouvrir l'interface, OpenListSMSGUI
 Menu, tray, add
-Menu, tray, add, Actualiser, refreshStatus
+Menu, tray, add, Actualiser, refresh
 Menu, tray, Default,  Ouvrir l'interface
 
 Menu, tray, Icon, Quitter l'application, shell32.dll, %deleteIconID%
@@ -115,11 +110,11 @@ Menu, tray, Icon, Actualiser, shell32.dll, %refreshIconID%
 
 ; Création de l'interface de liste SMS
 Gui, ListSMSGUI: New, +HwndMyGuiHwnd, B525-Manager
-Gui, ListSMSGUI:Add, Button, hWndhButton1 x10 y8 w100 r2, %A_Space%Actualiser
+Gui, ListSMSGUI:Add, Button, hWndhButton1 x10 y8 w100 r2 vRefreshButton, %A_Space%Actualiser
 SetButtonIcon(hButton1, "shell32.dll", refreshIconID, 20)
-Gui, ListSMSGUI:Add, Button, hWndhButton2 x240 y8 w220 r2, %A_Space%Marquer tous les messages comme lus
+Gui, ListSMSGUI:Add, Button, hWndhButton2 x240 y8 w220 r2 vReadAllButton, %A_Space%Marquer tous les messages comme lus
 SetButtonIcon(hButton2, "shell32.dll", validIconID, 20)
-Gui, ListSMSGUI:Add, Button, hWndhButton3 x470 y8 w200 r2, %A_Space%Supprimer tous les messages
+Gui, ListSMSGUI:Add, Button, hWndhButton3 x470 y8 w200 r2 vDeleteAllButton, %A_Space%Supprimer tous les messages
 SetButtonIcon(hButton3, "shell32.dll", deleteIconID, 20)
 Gui, ListSMSGUI:Add, Button, hWndhButton6 x675 y8 w35 r2, %A_Space%
 SetButtonIcon(hButton6, "shell32.dll", settingsIconID, 20)
@@ -130,7 +125,7 @@ Gui, ListSMSGUI:Add, Picture, ys %dateIconID% w16 h16, shell32.dll
 Gui, ListSMSGUI:Add, Text, ys w200 h20 vFullDate, 
 Gui, ListSMSGUI:Add, Picture, section xs %messageIconID% w16 h16, shell32.dll
 Gui, ListSMSGUI:Add, Edit, ReadOnly ys w670 h50 vFullMessage, %helpText%
-Gui, ListSMSGUI:Add, Button, section xs hWndhButton5  w150 r2 gLink, %A_Space%Ouvrir la page Web
+Gui, ListSMSGUI:Add, Button, section xs hWndhButton5  w150 r2 gopenWebPage, %A_Space%Ouvrir la page Web
 SetButtonIcon(hButton5, "shell32.dll", openWebPageIconID, 20)
 Gui, ListSMSGUI:Add, Button, ys hWndhButtonWifi x200 w140 r2 vWifiStatusButton gSwitchWifi, %A_Space%Activer le Wifi
 SetButtonIcon(hButtonWifi, "ddores.dll", enableWifiIconID, 20)
@@ -153,8 +148,9 @@ LV_SetImageList(ImageListID)  ; Assign the above ImageList to the current ListVi
  ; #  #   #   #  #   #
  ; #   #   ###   #   #
 
+
 Loop {
-	refreshStatus()
+	refresh()
 	Sleep %loopDelay%
 }
 
@@ -175,21 +171,7 @@ ExitAppli(){
 	ExitApp
 }
 
-getSMSCount(option){
-	return % runShellCmd("get-count " option)
-}
-
-getSmsList(option){
-	listSMS := runShellCmd("get-sms " option)
-	return % listSMS
-}
-
-getWifiStatus(){
-	return % runShellCmd("get-wifi ")
-}
-
-
-Link() {
+openWebPage() {
 	Global ipRouter
   Run http://%ipRouter%/html/smsinbox.html
 }
@@ -197,29 +179,62 @@ Link() {
 updateTrayIcon(iconName){
 	Global lastIcon
 	if !iconName
-		iconName = % lastIcon
-	iconFile = %A_WorkingDir%\medias\%iconName%.ico
-	Menu, Tray, Icon, %iconFile%
+		iconName := lastIcon
+	iconFile := A_WorkingDir . "\medias\" . iconName . ".ico"
+	Menu, Tray, Icon, % iconFile
 }
 
-runShellCmd(option){
-	Global scriptPath
-	cmd := ComSpec . " /c bash.exe /mnt/" . scriptPath . "/scripts/manage_sms.sh " . option
-	objOut := % StdOutStream(cmd)
-; Gestion des erreurs
-	if(InStr(objOut,"ERROR")){
-		objOut := RegExReplace(objOut, ".\[91mERROR : ", "> ")
-		objOut := RegExReplace(objOut, ".\[0m")
-		errorText = Une erreur est survenue : `n`n%objOut%
-	; Cas spécial où il y a une erreur de mot de passe, quitte l'application immédiatement
-		if(InStr(objOut,"PASSWORD")){
-			errorText = Le mot de passe configuré est incorrect !`n`nVeuillez vérifier le fichier "config.ini" `n `nNB : Le compte est peut-être aussi verrouillé suite à de trop nombreuses tentatives incorrectes... 
+waitForNetwork(){
+	; Vérification BOX joignable
+	Global ipRouter
+	cmd := "powershell.exe -ExecutionPolicy Bypass -Command Test-NetConnection " . ipRouter . " -InformationLevel Quiet "	
+
+	objShell := ComObjCreate("WScript.Shell")
+	objExec := % objShell.Exec(cmd)
+	result := objExec.StdOut.ReadAll()
+
+	if(!InStr(result, "True")){	
+		Global lastIcon
+		Global data
+		noticeText = La box 4G est injoignable, veuillez vérifier la connexion...
+		quiet := !guiIsActive()
+		if(!quiet){	
+			TrayTip, Erreur, % noticeText
 		}
-		errorText = %errorText% `n`nL'éxécution du programme est annulée.
-		MsgBox, 48, ERREUR ! , %errorText%
-		ExitApp
+		Menu, Tray, Tip, % noticeText
+		; actualisation de l'icone 
+		updateTrayIcon("net")
+		lastIcon = net
+		data := {}
+		Sleep 20000 ; Nouvelle tentative toutes les 20s
+		waitForNetwork()
 	}
-	return objOut
+}
+
+runBoxCmd(command){
+	cmd := "powershell.exe -ExecutionPolicy Bypass -File " . A_WorkingDir . "\manage_sms.ps1 " . command
+
+	objShell := ComObjCreate("WScript.Shell")
+	objExec := % objShell.Exec(cmd)
+	result := objExec.StdOut.ReadAll()
+
+; Gestion des erreurs
+	if(InStr(result,"ERROR")){
+		; Cas spécial où il y a une erreur de joignabilité
+		if(InStr(result,"Router unreachable")){
+			waitForNetwork()
+		}else{
+			errorText := "Une erreur est survenue : `n`n" . result
+			; Cas spécial où il y a une erreur de mot de passe, quitte l'application immédiatement
+			if(InStr(result,"PASSWORD")){
+				errorText = Le mot de passe configuré est incorrect !`n`nVeuillez vérifier le fichier "config.ini" `n `nNB : Le compte est peut-être aussi verrouillé suite à de trop nombreuses tentatives incorrectes... 
+			}
+			errorText := errorText . "`n`nL'éxécution du programme est annulée."
+			MsgBox, 48, ERREUR ! , % errorText
+			ExitApp
+		}
+	}
+	return result
 }
 
 convertXMLtoArray(xmldata , rootNode){
@@ -237,100 +252,111 @@ guiIsActive(){
 }
 
 
-refreshWifiStatus(){
+refreshWifiStatus(force){
 	Global wifiStatus
-	wifiStatus = % getWifiStatus()
+	if(force = True){
+		wifiStatus := runBoxCmd("get-wifi")
+	}
 
 	; Adaptation des labels du statut WIFI
 	wifiLabelCmd = Activer le WIFI
 	if(wifiStatus = 1){
 		wifiLabelCmd = Désactiver le WIFI
 	}
-	GuiControl,ListSMSGUI:,WifiStatusButton, %wifiLabelCmd%
-	Menu, Tray, Rename, 3& , %wifiLabelCmd%
+	GuiControl,ListSMSGUI:,WifiStatusButton, % wifiLabelCmd
+	Menu, Tray, Rename, 3& , % wifiLabelCmd
 }
 
-refreshStatus(){
+refresh(){
+	Global data
+	Global wifiStatus
 	Global lastIcon
-	quiet := !guiIsActive()
-
+	Gui, ListSMSGUI:Default
+	GuiControl, Disable , RefreshButton 
+	GuiControl, Disable , DeleteAllButton 
+	GuiControl, Disable , ReadAllButton 
+	clearGUI()
 	updateTrayIcon("load")
 
-	; Vérification BOX joignable
-	Global ipRouter
-	cmd := "powershell.exe -ExecutionPolicy Bypass -Command Test-NetConnection " . ipRouter . " -InformationLevel Quiet "	
-	result := % StdOutStream(cmd)
-	if(!InStr(result, "True")){	
-		noticeText = La box 4G est injoignable, veuillez vérifier la connexion...
-		if(!quiet){	
-			TrayTip, Erreur, % noticeText
-		}
-		Menu, Tray, Tip, %noticeText%
-		; actualisation de l'icone 
-		updateTrayIcon("net")
-		lastIcon = "net"
-		Return
-	}
+	quiet := !guiIsActive()
 
 	if(!quiet){
 		SplashTextOn, 300 , 40 , BOX 4G, Actualisation, merci de patienter...
 	}
-	
-	refreshWifiStatus()
-	clearGUI()
 
-	; Récupération de tous les comptes de la boite
-	SMSCountsXML = % getSMSCount("All")
+	; Récupération de tous les comptes de la boite et du statut du wifi
+	SMSCountsXML := runBoxCmd("get-count All")
 
+	RegExMatch(SMSCountsXML,"<wifiStatus>(\d+)</wifiStatus>",wifiStatusNode)
+	wifiStatus := wifiStatusNode1
 	RegExMatch(SMSCountsXML,"<LocalUnread>(\d+)</LocalUnread>",unreadSMSCountNode)
-	unreadSMSCount = %unreadSMSCountNode1%
+	unreadSMSCount := unreadSMSCountNode1
 	RegExMatch(SMSCountsXML,"<LocalInbox>(\d+)</LocalInbox>",inboxSMSCountNode)
-	inboxSMSCount = %inboxSMSCountNode1%
+	inboxSMSCount := inboxSMSCountNode1
 	RegExMatch(SMSCountsXML,"<LocalOutbox>(\d+)</LocalOutbox>",outboxSMSCountNode)
-	outboxSMSCount = %outboxSMSCountNode1%
+	outboxSMSCount := outboxSMSCountNode1
 
-	if(inboxSMSCount || outboxSMSCount){
-		if(inboxSMSCount > 0){
-			; Récupération des messages reçus
-			createSmsList(1)
-		}
-		if(outboxSMSCount > 0){
-			; Récupération des messages envoyés
-			createSmsList(2)
-		}
-		LV_ModifyCol()  ; Auto-size
-		LV_ModifyCol(3, "SortDesc") ; Sort by Date
-	}else{
-		 if(!quiet){
-		 	Sleep 1000 ; juste pour laisser le temps au message de s'afficher
-		 }
+	refreshWifiStatus(False)
+
+	data := {"inboxSMSCount" : inboxSMSCount, "outboxSMSCount" : outboxSMSCount, "unreadSMSCount" : unreadSMSCount}
+
+	; INBOX
+	if(data["inboxSMSCount"] > 0){
+		inboxSMSXML := runBoxCmd("get-sms 1") 
+		inboxSMSNodes := convertXMLtoArray(inboxSMSXML, "//response/Messages/Message")
+		data["inboxSMSList"] := inboxSMSNodes
 	}
+	; OUTBOX
+	if(data["outboxSMSCount"] > 0){
+		outboxSMSXML := runBoxCmd("get-sms 2")
+		outboxSMSNodes := convertXMLtoArray(outboxSMSXML, "//response/Messages/Message")
+	 	data["outboxSMSList"] := outboxSMSNodes
+	}
+
+	if(ObjCount(data) > 1 ){
+
+		; Création de la liste
+		if(data["inboxSMSCount"] > 0){
+			createSmsList(1,data["inboxSMSList"])
+		}
+		if(data["outboxSMSCount"] > 0){
+			createSmsList(2,data["outboxSMSList"])
+		}
+
+		; Auto-size
+		LV_ModifyCol()
+		; Sort by Date  
+		LV_ModifyCol(3, "SortDesc")
+
+		; TOOLTIP UPDATE
+		If (data["unreadSMSCount"] > 0)
+		{
+			; Modification du tooltip - pluriel - en fonction du nombre
+			if(data["unreadSMSCount"] = 1){
+				tooltipTitle = 1 nouveau message
+			}else{
+				tooltipTitle := data["unreadSMSCount"] . " nouveaux messages"
+			}
+			lastIcon = more
+		}else {
+			; Il n'y a aucun message non lu 
+			lastIcon = noSMS
+			tooltipTitle = Aucun nouveau message
+		}
+		; actualisation de l'icone 
+		updateTrayIcon(lastIcon)
+		; actualisation de l'infobulle de l'icone
+		Menu, Tray, Tip, % tooltipTitle "`n"data["inboxSMSCount"] " reçu(s) `n"data["outboxSMSCount"] " envoyé(s)"
+	}
+
 	if(!quiet){
 		SplashTextOff
 	}
-
-
-
-	; si il y a des messages non lus
-	If (unreadSMSCount > 0)
-	{
-		; Modification de message - pluriel - en fonction du nombre
-		if(unreadSMSCount = 1){
-			noticeTitle = 1 nouveau message
-		}else{
-			noticeTitle = %unreadSMSCount% nouveaux messages
-		}
-		lastIcon = more
-	}else {
-		; Il n'y a aucun message non lu 
-		lastIcon = noSMS
-		noticeTitle = Aucun nouveau message
-	}
-	; actualisation de l'icone 
-	updateTrayIcon(lastIcon)
-	; actualisation de l'infobulle de l'icone
-	Menu, Tray, Tip, %noticeTitle% `n%inboxSMSCount% reçu(s) `n%outboxSMSCount% envoyé(s)
+	GuiControl, Enable , RefreshButton 
+	GuiControl, Enable , ReadAllButton 
+	GuiControl, Enable , DeleteAllButton 
 }
+
 
 ; Permet de valider une IP
 ValidIP(IPAddress){
@@ -355,24 +381,6 @@ JEE_StrUtf8BytesToText(ByRef vUtf8Bytes){
   }
   else
     return StrGet(&vUtf8Bytes, "UTF-8")
-}
-
-JEE_StrTextToUtf8Bytes(ByRef vText){
-  VarSetCapacity(vTemp, StrPut(vText, "UTF-8"))
-  StrPut(vText, &vTemp, "UTF-8")
-  return StrGet(&vTemp, "CP0")
-}
-
-RemoveLetterAccents(ByRef text)	{
-	static Array := { "a" : "áàâǎăãảạäåāąấầẫẩậắằẵẳặǻ", "c" : "ćĉčċç", "d" : "ďđð", "e" : "éèêěĕẽẻėëēęếềễểẹệ", "g" : "ğĝġģ", "h" : "ĥħ", "i" : "íìĭîǐïĩįīỉịĵ", "k" : "ķ", "l" : "ĺľļłŀ", "n" : "ńňñņ", "o" : "óòŏôốồỗổǒöőõøǿōỏơớờỡởợọộ", "s" : "ṕṗŕřŗśŝšş", "t" : "ťţŧ", "u" : "úùŭûǔůüǘǜǚǖűũųūủưứừữửựụ", "w" : "ẃẁŵẅýỳŷÿỹỷỵ", "z" : "źžż" }
-	for k, v in Array
-	{
-	 StringUpper, VU, v
-	 StringUpper, KU, k
-	 text:=RegExReplace(text,"[" v "]",k)
-	 text:=RegExReplace(text,"[" VU "]",KU)
-	}
-	Return text
 }
 
 ; Fonction spéciale pour les GUI, permet d'afficher une icone dans un bouton
@@ -409,13 +417,12 @@ clearGUI(){
 	GuiControl,ListSMSGUI:,FullMessage, %helpText%
 }
 
-createSmsList(boxType){
+createSmsList(boxType, SMSList){
+	if( SMSList.Length )	{
 		Global MyGuiHwnd
-		SMSList = % getSmsList(boxType)
-		messagesNodes = % convertXMLtoArray(SMSList, "//response/Messages/Message")
-		messages := messagesNodes.item(0)
+		messages := SMSList.item(0)
 		while messages {
-			iconID = %boxType%
+			iconID := boxType
 			phoneNumber := % messages.getElementsByTagName( "Phone" ).item[0].text
 			StringReplace, phoneNumber, phoneNumber, +33, 0 , All
 			IniRead, phoneNumber, %A_WorkingDir%\config.ini, contacts, % phoneNumber, % phoneNumber
@@ -430,7 +437,7 @@ createSmsList(boxType){
 					if (StrLen(contentMessage) > 120){
 						contentMessageTT := SubStr(contentMessage, 1, 120) "..."
 					}else{
-						contentMessageTT = % contentMessage
+						contentMessageTT := contentMessage
 					}
 					
 					if ! WinExist("ahk_id " MyGuiHwnd){	
@@ -440,8 +447,9 @@ createSmsList(boxType){
 			}
 			StringReplace, contentMessage, contentMessage, `n, %A_Space% ↳ %A_Space%, All
 			LV_Add("Icon" . iconID " Select " ,, phoneNumber , dateMessage , contentMessage)				
-		  messages := messagesNodes.nextNode
+		  messages := SMSList.nextNode
 		}
+	}
 }
 
 OpenListSMSGUI:
@@ -493,16 +501,16 @@ ListSMSGUIButton:
 return
 
 ListSMSGUIButtonActualiser:
-	refreshStatus()
+	refresh()
 return
 
 ListSMSGUIButtonMarquertouslesmessagescommelus:
 	SplashTextOn, 200 , 50 , BOX 4G : SMS, Marquage en cours...
-	runShellCmd("read-all")
+	runBoxCmd("read-all")
 	SplashTextOn, 200 , 50 , BOX 4G : SMS, Marquage terminé !
 	Sleep 1000
 	SplashTextOff
-	refreshStatus()
+	refresh()
 return
 
 ListSMSGUIButtonSupprimertouslesmessages:
@@ -510,13 +518,8 @@ ListSMSGUIButtonSupprimertouslesmessages:
 	IfMsgBox, OK
 	{
 		Gui, Hide
-		; SplashTextOn, 200 , 50 , BOX 4G : SMS, Suppression en cours...
-	  runShellCmd("delete-all 1")
-	  runShellCmd("delete-all 2")
-		; SplashTextOn, 200 , 50 , BOX 4G : SMS, Suppression terminée !
-		; Sleep 1000
-		; SplashTextOff
-		refreshStatus()
+	  runBoxCmd("delete-all")
+		refresh()
 	}
 return 
 
@@ -541,23 +544,44 @@ return
 ; SOUS-PROGRAME - GUI d'envoi de SMS
 ; *****************************
 SendSMSGUI:
+	IniRead, iniList, %A_WorkingDir%\config.ini, contacts
+	StringSplit, contactsArray, % JEE_StrUtf8BytesToText(iniList), `n
+
+	contactsList := ""
+	if(StrLen(contactsArray0)){
+		Loop, % contactsArray0
+		{
+	    line := contactsArray%A_Index%
+	    egalPos := InStr(line, "=")
+	    contactsList .= SubStr(line, egalPos + 1) . " (" . SubStr(line, 1, egalPos - 1) . ")|" 
+		}
+	}
+
 	Gui, SendSMSGUI: New
 	Gui, SendSMSGUI:Add, Text,, Message:
 	Gui, SendSMSGUI:Add, Edit, vSMSText w240 r5 ys
-	Gui, SendSMSGUI:Add, Text, section xs w45, Numéro: 
-	Gui, SendSMSGUI:Add, Edit, vNumero ys w80 Limit10 Number
-
-; Si numéro par défaut perso configuré, ajout à l'affichage
-	if (defaultSMS){
-		Gui, SendSMSGUI:Add, Text, ys, Par défaut : %defaultSMS% 
+	Gui, SendSMSGUI:Add, Text, section xs w65, Destinataire :
+	if(StrLen(contactsList)){
+		Gui, SendSMSGUI:Add, DropDownList, ys vContactChoice w200 gChangeContact, % contactsList
+		Gui, SendSMSGUI:Add, Text, section xs w65, Numéro : 
+		GuiControl, SendSMSGUI:Choose, ContactChoice, 1
 	}
+	Gui, SendSMSGUI:Add, Edit, vNumero ys w80 Limit10 Number
+	
 
 	Gui, SendSMSGUI:Add, Button, section xs hWndhButton10 w150 r2 gSendSMSGUIGuiClose, Annuler
 	SetButtonIcon(hButton10, "shell32.dll", cancelIconID, 20)
 	Gui, SendSMSGUI:Add, Button, ys hWndhButton11 w150 r2, Envoi 
 	SetButtonIcon(hButton11, "shell32.dll", validIconID, 20)
 	Gui, SendSMSGUI:Show,, Envoi de SMS sur Box4G
-	return
+
+ChangeContact:
+	if(StrLen(contactsList)){
+	  Gui, SendSMSGUI:Submit, NoHide
+	  contactChoosen = % SubStr(ContactChoice, InStr(ContactChoice, "(") + 1, -1)
+		GuiControl,SendSMSGUI:,Numero, % contactChoosen
+	}
+return
 
 SendSMSGUIButtonEnvoi:
 	Gui, SendSMSGUI:Submit, NoHide
@@ -566,38 +590,41 @@ SendSMSGUIButtonEnvoi:
 		return
 	}
 
-; Si numéro par défaut perso configuré, application
-	if(!Numero && defaultSMS){
-		Numero = %defaultSMS%
-	}
-
 	if(!Numero){
 		MsgBox, 48,Erreur, Aucun numéro saisi !!
 		return
 	}
 
-	MsgBox, 33, Confirmation, Le message suivant va être envoyé au %Numero% : `n`n "%SMSText%" `n `n Confirmer l'envoi ?
+	IniRead, contactName, %A_WorkingDir%\config.ini, contacts, % Numero
+	contactName := % JEE_StrUtf8BytesToText(contactName)
+
+	if(contactName != "ERROR"){
+		dest = à %contactName%
+	}else{
+		dest = au %Numero%
+	}
+
+	MsgBox, 33, Confirmation, Le message suivant va être envoyé %dest% : `n`n "%SMSText%" `n `n Confirmer l'envoi ?
 	IfMsgBox, OK
 	{
 	; suppression des caractères à pb
-		StringReplace, SMSText, SMSText, ', '' , All
+		StringReplace, SMSText, SMSText, ", """ , All
 		StringReplace, SMSText, SMSText, >, _ , All
 		StringReplace, SMSText, SMSText, <, _ , All
-		StringReplace, SMSText, SMSText, `n, _NL_ , All ; transposition des sauts de ligne car mal géré par Run
 		Gui, SendSMSGUI:Hide
 		SplashTextOn, 200 , 50 , BOX 4G : SMS, Envoi en cours...
-		sendReturn := runShellCmd("send-sms '" . SMSText . "' " . Numero)
-		if(InStr(sendReturn, "unexpected EOF")){
-			SplashTextOff
-			MsgBox, 48, ERREUR, Le message n'a pas pu être envoyé. `n Veuillez vérifier votre saisie...
-			Sleep 100
-			Gui, SendSMSGUI:Show
-		}else{
+		sendReturn := runBoxCmd("send-sms """ . SMSText . """ " . Numero)
+		if(InStr(sendReturn, "<response>OK</response>")){
 			SplashTextOn, 200 , 50 , BOX 4G : SMS, Le message a bien été envoyé !
 			Sleep 1000
 			SplashTextOff
 			Gui, SendSMSGUI:Destroy
-			refreshStatus()
+			refresh()
+		}else{
+			SplashTextOff
+			MsgBox, 48, ERREUR, Le message n'a pas pu être envoyé. `n Veuillez vérifier votre saisie...
+			Sleep 100
+			Gui, SendSMSGUI:Show
 		}
 	}
 	return
@@ -617,104 +644,22 @@ SendSMSGUIGuiClose:
 
 
 SwitchWifi:
+	Gui, ListSMSGUI:Default
 	updateTrayIcon("load")
 	Global wifiStatus
-	if guiIsActive(){
-		GuiControl, Disable ,WifiStatusButton
-	} 
+	GuiControl, Disable ,WifiStatusButton 
 
 	if(wifiStatus = 1){
 		SplashTextOn, 200 , 50 , BOX 4G : WIFI, Désactivation du WIFI...
-		runShellCmd("deactivate-wifi")
+		runBoxCmd("deactivate-wifi")
 	}	else{
 		SplashTextOn, 200 , 50 , BOX 4G : WIFI, Activation du WIFI...
-		runShellCmd("activate-wifi")
+		runBoxCmd("activate-wifi")
 	}
-	Sleep 3000
+	Sleep 1000
 	SplashTextOff
-	refreshWifiStatus()
-	updateTrayIcon(false) ;Restore previous icon, set by refreshStatus()
-	if guiIsActive(){
-		Sleep 5000
-		GuiControl, Enable ,WifiStatusButton
-	} 
+	refreshWifiStatus(True)
+	updateTrayIcon(false) ;Restore previous icon, set by refresh()
+	Sleep 5000 ; evite de changer trop rapidemment
+	GuiControl, Enable ,WifiStatusButton
 	return
-
-
-	;  ##   ###   ###    ##   #  #  ###    ##   #  #   ##   ###
-	; #  #   #    #  #  #  #  #  #   #    #  #  #  #  #  #  #  #
-	;  #     #    #  #  #  #  #  #   #       #  #  #  #  #  #  #
-	;   #    #    #  #  #  #  #  #   #      #   #  #  ####  ###
-	; #  #   #    #  #  #  #  #  #   #     #     ##   #  #  # #
-	;  ##    #    ###    ##    ##    #    ####   ##   #  #  #  #
-	
-
-
-	StdOutStream( sCmd, Callback := "", WorkingDir:=0, ByRef ProcessID:=0) { ; Modified  :  maz-1 https://gist.github.com/maz-1/768bf7938e533907d54bff276db80904
-  Static StrGet := "StrGet"           ; Modified  :  SKAN 31-Aug-2013 http://goo.gl/j8XJXY
-                                      ; Thanks to :  HotKeyIt         http://goo.gl/IsH1zs
-                                      ; Original  :  Sean 20-Feb-2007 http://goo.gl/mxCdn
-  tcWrk := WorkingDir=0 ? "Int" : "Str"
-  hPipeRead := 
-  hPipeWrite := 
-  sOutput :=
-  ExitCode :=
-  DllCall( "CreatePipe", UIntP,hPipeRead, UIntP,hPipeWrite, UInt,0, UInt,0 )
-  DllCall( "SetHandleInformation", UInt,hPipeWrite, UInt,1, UInt,1 )
-  If A_PtrSize = 8
-  {
-    VarSetCapacity( STARTUPINFO, 104, 0  )      ; STARTUPINFO          ;  http://goo.gl/fZf24
-    NumPut( 68,         STARTUPINFO,  0 )      ; cbSize
-    NumPut( 0x100,      STARTUPINFO, 60 )      ; dwFlags    =>  STARTF_USESTDHANDLES = 0x100
-    NumPut( hPipeWrite, STARTUPINFO, 88 )      ; hStdOutput
-    NumPut( hPipeWrite, STARTUPINFO, 96 )      ; hStdError
-    VarSetCapacity( PROCESS_INFORMATION, 24 )  ; PROCESS_INFORMATION  ;  http://goo.gl/b9BaI
-  }
-  Else
-  {
-    VarSetCapacity( STARTUPINFO, 68, 0  )
-    NumPut( 68,         STARTUPINFO,  0 )
-    NumPut( 0x100,      STARTUPINFO, 44 )
-    NumPut( hPipeWrite, STARTUPINFO, 60 )
-    NumPut( hPipeWrite, STARTUPINFO, 64 )
-    VarSetCapacity( PROCESS_INFORMATION, 16 )
-  }
-  
-  If ! DllCall( "CreateProcess", UInt,0, UInt,&sCmd, UInt,0, UInt,0 ;  http://goo.gl/USC5a
-              , UInt,1, UInt,0x08000000, UInt,0, tcWrk, WorkingDir
-              , UInt,&STARTUPINFO, UInt,&PROCESS_INFORMATION ) 
-   {
-    DllCall( "CloseHandle", UInt,hPipeWrite ) 
-    DllCall( "CloseHandle", UInt,hPipeRead )
-    DllCall( "SetLastError", Int,-1 )     
-    Return "" 
-   }
-   
-  hProcess := NumGet( PROCESS_INFORMATION, 0 )                 
-  hThread  := NumGet( PROCESS_INFORMATION, A_PtrSize )  
-  ProcessID:= NumGet( PROCESS_INFORMATION, A_PtrSize*2 )  
-
-  DllCall( "CloseHandle", UInt,hPipeWrite )
-
-  AIC := ( SubStr( A_AhkVersion, 1, 3 ) = "1.0" ) ;  A_IsClassic 
-  VarSetCapacity( Buffer, 4096, 0 ), nSz := 0 
-  
-  While DllCall( "ReadFile", UInt,hPipeRead, UInt,&Buffer, UInt,4094, UIntP,nSz, Int,0 ) {
-
-   tOutput := ( AIC && NumPut( 0, Buffer, nSz, "Char" ) && VarSetCapacity( Buffer,-1 ) ) 
-              ? Buffer : %StrGet%( &Buffer, nSz, "CP0" ) ; formerly CP850, but I guess CP0 is suitable for different locales
-
-   Isfunc( Callback ) ? %Callback%( tOutput, A_Index ) : sOutput .= tOutput
-
-  }                   
- 
-  DllCall( "GetExitCodeProcess", UInt,hProcess, UIntP,ExitCode )
-  DllCall( "CloseHandle",  UInt,hProcess  )
-  DllCall( "CloseHandle",  UInt,hThread   )
-  DllCall( "CloseHandle",  UInt,hPipeRead )
-  DllCall( "SetLastError", UInt,ExitCode  )
-  VarSetCapacity(STARTUPINFO, 0)
-  VarSetCapacity(PROCESS_INFORMATION, 0)
-
-Return Isfunc( Callback ) ? %Callback%( "", 0 ) : sOutput      
-}
