@@ -106,7 +106,7 @@ Menu, tray, Icon, Paramètres, shell32.dll, %settingsIconID%
 Menu, tray, Icon, Activer le Wifi, ddores.dll, %enableWifiIconID%
 Menu, tray, Icon, Ouvrir la page Web, shell32.dll, %openWebPageIconID%
 Menu, tray, Icon, Envoyer un SMS, shell32.dll, %sendSMSIconID%
-Menu, tray, Icon, Actualiser, shell32.dll, %refreshIconID%
+Menu, tray, Icon, Actualiser, shell32.dll, %refreshIconID% 
 
 ; Création de l'interface de liste SMS
 Gui, ListSMSGUI: New, +HwndMyGuiHwnd, B525-Manager
