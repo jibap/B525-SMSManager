@@ -27,7 +27,7 @@ function ProcessRouterResponseHeader {
 
 function GetSessionToken() {
     $response = GetRouterData '/api/webserver/SesTokInfo'
-    if ($response -like "*<response><SesInfo>*") {
+    if ($response -like "*<SesInfo>*") {
         $xml = [xml]$response
         $script:SESSIONID = "SessionID=" +$xml.response.SesInfo
         $script:TOKEN = $xml.response.TokInfo
@@ -71,6 +71,7 @@ function PostRouterData($relativeUrl, $data, $askNewToken) {
                 Write-Host $relativeUrl $data
             }
         }
+        return
     }
     return $response
 }
@@ -84,13 +85,14 @@ function b64_sha256($data) {
 
 function loggedin_check() {
     $response = GetRouterData '/api/user/state-login'
-    if ($response -like "*<response><password_type>*") {
+
+    if ($response -like "*<password_type>*") {
         $xml = [xml]$response
         $session_state = $xml.response.State
-        
+
         if ($session_state -eq "0") {
             $loggedin = $true
-            #Write-Host "LOGIN SUCCESS"  -ForegroundColor Green
+           #  Write-Host "LOGIN SUCCESS"  -ForegroundColor Green
         }else{
             Write-Host "ERROR : STATE = $session_state"  -ForegroundColor Red
         }
@@ -113,7 +115,6 @@ function Login() {
 
     $data = "<request><Username>$script:ROUTER_USERNAME</Username><Password>$credentials</Password><password_type>4</password_type></request>"
     $response = PostRouterData "/api/user/login" $data
-
     if ($response -like "*<response>OK*") {
         loggedin_check($session)
     }
@@ -168,8 +169,8 @@ function DeleteSMS($boxType){
 }
 
 function DeleteAll($boxType) {
-    DeleteSMS 1 #reçus
-    DeleteSMS 2 #envoyés
+    DeleteSMS 1 #reÃ§us
+    DeleteSMS 2 #envoyÃ©s
 }
 
 function SendSMS($number, $message) {
@@ -181,9 +182,9 @@ write-host $message
 }
 
 function GetWifiStatus() {
-    $response = Invoke-WebRequest -Uri "http://$script:ROUTER_IP/api/wlan/basic-settings"
-    [xml]$responseXML = $response.Content
-    $status = $responseXML.response.WifiEnable
+    $response = GetRouterData '/api/monitoring/status'
+    [xml]$responseXML = $response
+    $status = $responseXML.response.WifiStatus
     return $status
 }
 
@@ -196,7 +197,7 @@ function ChangeWifiStatus($status) {
 #### BEDUT DU PROGRAMME ####
 ############################
 
-# Force le dossier d'éxécution
+# Force le dossier d'Ã©xÃ©cution
 Set-Location -Path $PSScriptRoot
 
 $CONFIG_FILE = "config.ini"
@@ -226,9 +227,9 @@ Usage: manage_sms.ps1 <command>
 
 Commands:
     get-count [Unread,Inbox,Outbox,All]
-    get-sms [1=reçus (par defaut), 2=envoyés]
+    get-sms [1=reÃ§us (par defaut), 2=envoyÃ©s]
     read-all
-    delete-sms [1=reçus (par defaut), 2=envoyés]
+    delete-sms [1=reÃ§us (par defaut), 2=envoyÃ©s]
     delete-all
     get-wifi
     activate-wifi
@@ -284,9 +285,9 @@ if ($args[0] -eq "send-sms") {
     }
 }
 
-if (($args[0] -ne "get-count") -and ($args[0] -ne "get-wifi")){
+if (($args[0] -ne "get-count")){
     $script:SESSION = New-Object System.Net.WebClient
-    $script:SESSION.Encoding = [System.Text.Encoding]::UTF8 # Nécessaire pour l'envoi de caractères spéciaux dans les SMS
+    $script:SESSION.Encoding = [System.Text.Encoding]::UTF8 # NÃ©cessaire pour l'envoi de caractÃ¨res spÃ©ciaux dans les SMS
     Login
 }
 
