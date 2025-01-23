@@ -174,7 +174,6 @@ function DeleteAll($boxType) {
 }
 
 function SendSMS($number, $message) {
-write-host $message
     $message = $message -replace "_NL_", "`n"
     $data = "<request><Index>-1</Index><Phones><Phone>$number</Phone></Phones><Sca></Sca><Content>$message</Content><Length>$($message.Length)</Length><Reserved>1</Reserved><Date>$(Get-Date -Format "yyyy-MM-dd HH:mm:ss")</Date></request>"
     $response = PostRouterData "/api/sms/send-sms" $data $true
@@ -197,7 +196,7 @@ function ChangeWifiStatus($status) {
 #### BEDUT DU PROGRAMME ####
 ############################
 
-# Force le dossier d'éxécution
+# Force le dossier d' x cution
 Set-Location -Path $PSScriptRoot
 
 $CONFIG_FILE = "config.ini"
@@ -227,9 +226,9 @@ Usage: manage_sms.ps1 <command>
 
 Commands:
     get-count [Unread,Inbox,Outbox,All]
-    get-sms [1=reçus (par defaut), 2=envoyés]
+    get-sms [1=re us (par defaut), 2=envoy s]
     read-all
-    delete-sms [1=reçus (par defaut), 2=envoyés]
+    delete-sms [1=re us (par defaut), 2=envoy s]
     delete-all
     get-wifi
     activate-wifi
@@ -285,11 +284,13 @@ if ($args[0] -eq "send-sms") {
     }
 }
 
-if (($args[0] -ne "get-count")){
-    $script:SESSION = New-Object System.Net.WebClient
-    $script:SESSION.Encoding = [System.Text.Encoding]::UTF8 # Nécessaire pour l'envoi de caractères spéciaux dans les SMS
-    Login
-}
+# Création de la session
+$script:SESSION = New-Object System.Net.WebClient
+$script:SESSION.Encoding = [System.Text.Encoding]::UTF8 # Nécessaire pour l'envoi de caractères spéciaux dans les SMS
+
+# Ouverture de la session
+Login
+
 
 switch ($args[0]) {
     "get-count" { GetCount $BOX_TYPE }
@@ -307,6 +308,5 @@ switch ($args[0]) {
     }
 }
 
-if (($args[0] -ne "get-count") -and ($args[0] -ne "get-wifi")){
-    Logout
-}
+# Fermeture de la session
+Logout
