@@ -106,7 +106,7 @@ Menu, tray, Icon, Paramètres, shell32.dll, %settingsIconID%
 Menu, tray, Icon, Activer le Wifi, ddores.dll, %enableWifiIconID%
 Menu, tray, Icon, Ouvrir la page Web, shell32.dll, %openWebPageIconID%
 Menu, tray, Icon, Envoyer un SMS, shell32.dll, %sendSMSIconID%
-Menu, tray, Icon, Actualiser, shell32.dll, %refreshIconID% 
+Menu, tray, Icon, Actualiser, shell32.dll, %refreshIconID%
 
 ; Création de l'interface de liste SMS
 Gui, ListSMSGUI: New, +HwndMyGuiHwnd, B525-Manager
@@ -154,7 +154,7 @@ Loop {
 	Sleep %loopDelay%
 }
 
-
+ 
  ; #####   ###   #   #   ###   #####   ###    ###   #   #   ###
  ; #      #   #  #   #  #   #    #      #    #   #  #   #  #   #
  ; #      #   #  ##  #  #        #      #    #   #  ##  #  #
@@ -190,8 +190,7 @@ waitForNetwork(){
 	cmd := "powershell.exe -ExecutionPolicy Bypass -Command Test-NetConnection " . ipRouter . " -InformationLevel Quiet "	
 
 	objShell := ComObjCreate("WScript.Shell")
-	objExec := % objShell.Exec(cmd)
-	result := objExec.StdOut.ReadAll()
+	result := % objShell.Exec(cmd).StdOut.ReadAll()
 
 	if(!InStr(result, "True")){	
 		Global lastIcon
@@ -215,8 +214,7 @@ runBoxCmd(command){
 	cmd := "powershell.exe -ExecutionPolicy Bypass -File " . A_WorkingDir . "\manage_sms.ps1 " . command
 
 	objShell := ComObjCreate("WScript.Shell")
-	objExec := % objShell.Exec(cmd)
-	result := objExec.StdOut.ReadAll()
+	result := % objShell.Exec(cmd).StdOut.ReadAll()
 
 ; Gestion des erreurs
 	if(InStr(result,"ERROR")){
@@ -372,15 +370,15 @@ ValidIP(IPAddress){
 	return 1
 }
 
-JEE_StrUtf8BytesToText(ByRef vUtf8Bytes){
+Utf8ToText(ByRef vUtf8){
   if A_IsUnicode
   {
-    VarSetCapacity(vTemp, StrPut(vUtf8Bytes, "CP0"))
-    StrPut(vUtf8Bytes, &vTemp, "CP0")
+    VarSetCapacity(vTemp, StrPut(vUtf8, "CP0"))
+    StrPut(vUtf8, &vTemp, "CP0")
     return StrGet(&vTemp, "UTF-8")
   }
   else
-    return StrGet(&vUtf8Bytes, "UTF-8")
+    return StrGet(&vUtf8, "UTF-8")
 }
 
 ; Fonction spéciale pour les GUI, permet d'afficher une icone dans un bouton
@@ -426,10 +424,10 @@ createSmsList(boxType, SMSList){
 			phoneNumber := % messages.getElementsByTagName( "Phone" ).item[0].text
 			StringReplace, phoneNumber, phoneNumber, +33, 0 , All
 			IniRead, phoneNumber, %A_WorkingDir%\config.ini, contacts, % phoneNumber, % phoneNumber
-			phoneNumber := % JEE_StrUtf8BytesToText(phoneNumber)
+			phoneNumber := % Utf8ToText(phoneNumber)
 			dateMessage := % messages.getElementsByTagName( "Date" ).item[0].text
 			dateMessage := "Le " . SubStr(dateMessage, 1, 10) . "  à  " . SubStr(dateMessage, 12, 19)
-			contentMessage := % JEE_StrUtf8BytesToText(messages.getElementsByTagName( "Content" ).item[0].text)
+			contentMessage := % Utf8ToText(messages.getElementsByTagName( "Content" ).item[0].text)
 			; Check si le message est "unread", icone spéciale + traytip
 			if(messages.getElementsByTagName( "Smstat" ).item[0].text = 0){
 					iconID = 3
@@ -545,7 +543,7 @@ return
 ; *****************************
 SendSMSGUI:
 	IniRead, iniList, %A_WorkingDir%\config.ini, contacts
-	StringSplit, contactsArray, % JEE_StrUtf8BytesToText(iniList), `n
+	StringSplit, contactsArray, % Utf8ToText(iniList), `n
 
 	contactsList := ""
 	if(StrLen(contactsArray0)){
@@ -596,7 +594,7 @@ SendSMSGUIButtonEnvoi:
 	}
 
 	IniRead, contactName, %A_WorkingDir%\config.ini, contacts, % Numero
-	contactName := % JEE_StrUtf8BytesToText(contactName)
+	contactName := % Utf8ToText(contactName)
 
 	if(contactName != "ERROR"){
 		dest = à %contactName%
@@ -647,19 +645,26 @@ SwitchWifi:
 	Gui, ListSMSGUI:Default
 	updateTrayIcon("load")
 	Global wifiStatus
-	GuiControl, Disable ,WifiStatusButton 
+	quietGui := !guiIsActive()
+	if(!quietGui){
+		GuiControl, Disable ,WifiStatusButton 
+	}
 
 	if(wifiStatus = 1){
 		SplashTextOn, 200 , 50 , BOX 4G : WIFI, Désactivation du WIFI...
 		runBoxCmd("deactivate-wifi")
+		wifiStatus = 0
 	}	else{
 		SplashTextOn, 200 , 50 , BOX 4G : WIFI, Activation du WIFI...
 		runBoxCmd("activate-wifi")
+		wifiStatus = 1
 	}
-	Sleep 1000
+
 	SplashTextOff
-	refreshWifiStatus(True)
+	refreshWifiStatus(false)
 	updateTrayIcon(false) ;Restore previous icon, set by refresh()
-	Sleep 5000 ; evite de changer trop rapidemment
-	GuiControl, Enable ,WifiStatusButton
+	if(!quietGui){
+		Sleep 5000 ; evite de changer trop rapidemment quand l'interface est ouverte
+		GuiControl, Enable ,WifiStatusButton
+	}
 	return
