@@ -21,7 +21,7 @@ L'application fonctionne comme un logiciel portable, une fois les fichiers récu
 Si vous n'avez pas le logiciel AHK installé, il suffit de télécharger et exécuter le B525-SMSmanager.exe qui fera une extraction des fichiers annexes (script powershell, icones, config) \
 Si vous utilisez déjà AHK (ou que vous préférez ne pas utiliser un .exe provenant d'internet...), téléchargez tous les fichiers sauf le .exe, placez les 4 fichiers .ico dans un dossier "medias" au même niveau que le .ahk et éxécuter le B525-SMSManager.ahk pour le lancer. 
 
-> Pour que l'application se lance au démarrage de l'ordi, pensez à la rajouter en tâche planifiée. 
+> Pour que l'application se lance au démarrage de l'ordi, pensez à la rajouter en tâche planifiée ou au dossier "Démarrage" de Windows (shell:startup )
 
 **Une fois que le config.ini est accessible, il y a 3 paramètres de configuration :**
 
