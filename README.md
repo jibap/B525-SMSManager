@@ -28,6 +28,7 @@ Si vous utilisez déjà AHK (ou que vous préférez ne pas utiliser un .exe prov
 **ROUTER_USERNAME** : username de connexion au retour (**admin** par défaut)\
 **DELAY** : période de vérification de nouveaux SMS (**5 minutes** par défaut)\
 **ROUTER_IP** : adresse IP du routeur (**192.168.8.1** par défaut)\
+**AUTO_WIFI_OFF** : heure d'extinction automatique du Wifi au format HH:MM (laisser vide ou supprimer la ligne pour ne pas utiliser) 
 
 Une section "[contacts]" est proposée en dessous, cela permets de convertir automatiquement à l'affichage des numéros de téléphone en un label de contact, la syntaxe est simple :
 
