@@ -4,6 +4,7 @@
 #SingleInstance force ; Force erase previous instance
 
 
+
 DllCall("AllocConsole")
 WinHide % "ahk_id " DllCall("GetConsoleWindow", "ptr")
 
@@ -148,10 +149,20 @@ LV_SetImageList(ImageListID)  ; Assign the above ImageList to the current ListVi
  ; #  #   #   #  #   #
  ; #   #   ###   #   #
 
-
 Loop {
 	refresh()
+	
 	Sleep %loopDelay%
+
+	; check if wifi off is set and needed
+	IniRead, autoWifiOff, %A_WorkingDir%\config.ini, main, AUTO_WIFI_OFF
+	if (autoWifiOff && RegExMatch(autoWifiOff, "^\d{2}:\d{2}$")) {
+    ; Récupérer l'heure actuelle
+    FormatTime, currentTime,, HH:mm
+    if (currentTime >= autoWifiOff) {
+      runBoxCmd("deactivate-wifi")
+    }
+	}
 }
 
  
