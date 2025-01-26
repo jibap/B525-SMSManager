@@ -4,7 +4,6 @@
 #SingleInstance force ; Force erase previous instance
 
 
-
 DllCall("AllocConsole")
 WinHide % "ahk_id " DllCall("GetConsoleWindow", "ptr")
 
@@ -201,7 +200,7 @@ waitForNetwork(){
 	cmd := "powershell.exe -ExecutionPolicy Bypass -Command Test-NetConnection " . ipRouter . " -InformationLevel Quiet "	
 
 	objShell := ComObjCreate("WScript.Shell")
-	result := % objShell.Exec(cmd).StdOut.ReadAll()
+	result := objShell.Exec(cmd).StdOut.ReadAll()
 
 	if(!InStr(result, "True")){	
 		Global lastIcon
@@ -225,7 +224,7 @@ runBoxCmd(command){
 	cmd := "powershell.exe -ExecutionPolicy Bypass -File " . A_WorkingDir . "\manage_sms.ps1 " . command
 
 	objShell := ComObjCreate("WScript.Shell")
-	result := % objShell.Exec(cmd).StdOut.ReadAll()
+	result := objShell.Exec(cmd).StdOut.ReadAll()
 
 ; Gestion des erreurs
 	if(InStr(result,"ERROR")){
@@ -432,13 +431,13 @@ createSmsList(boxType, SMSList){
 		messages := SMSList.item(0)
 		while messages {
 			iconID := boxType
-			phoneNumber := % messages.getElementsByTagName( "Phone" ).item[0].text
+			phoneNumber := messages.getElementsByTagName( "Phone" ).item[0].text
 			StringReplace, phoneNumber, phoneNumber, +33, 0 , All
 			IniRead, phoneNumber, %A_WorkingDir%\config.ini, contacts, % phoneNumber, % phoneNumber
-			phoneNumber := % Utf8ToText(phoneNumber)
-			dateMessage := % messages.getElementsByTagName( "Date" ).item[0].text
+			phoneNumber := Utf8ToText(phoneNumber)
+			dateMessage := messages.getElementsByTagName( "Date" ).item[0].text
 			dateMessage := "Le " . SubStr(dateMessage, 1, 10) . "  à  " . SubStr(dateMessage, 12, 19)
-			contentMessage := % Utf8ToText(messages.getElementsByTagName( "Content" ).item[0].text)
+			contentMessage := Utf8ToText(messages.getElementsByTagName( "Content" ).item[0].text)
 			; Check si le message est "unread", icone spéciale + traytip
 			if(messages.getElementsByTagName( "Smstat" ).item[0].text = 0){
 					iconID = 3
@@ -605,7 +604,7 @@ SendSMSGUIButtonEnvoi:
 	}
 
 	IniRead, contactName, %A_WorkingDir%\config.ini, contacts, % Numero
-	contactName := % Utf8ToText(contactName)
+	contactName := Utf8ToText(contactName)
 
 	if(contactName != "ERROR"){
 		dest = à %contactName%
