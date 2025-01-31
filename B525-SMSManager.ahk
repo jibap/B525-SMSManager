@@ -67,6 +67,35 @@ if(InStr(windowsVersion, "10")){
 	enableWifiIconID := "51"
 }
 
+; Ouverture du powershell permanent
+psShell := ComObject("WScript.Shell").Exec("powershell.exe -NoProfile -ExecutionPolicy Bypass -command -")
+OnExit(ClosePS)  ; Exécute ClosePS() quand le script se ferme
+
+SendToPS(command) {
+    global psShell
+    psShell.StdIn.WriteLine(command)
+    psShell.StdIn.WriteLine("echo END_OF_COMMAND")  ; Marqueur de fin
+
+    output := ""
+    while !psShell.StdOut.AtEndOfStream {
+        line := psShell.StdOut.ReadLine()
+        ; Ignorer les lignes contenant le préfixe de commande
+        if line = "END_OF_COMMAND"
+            break
+      	output .= line "`n"
+    }
+    return output
+}
+
+ClosePS(*) {  ; Fonction pour fermer proprement le PowerShell
+    global psShell
+    if (psShell) {
+        psShell.StdIn.WriteLine("exit")  ; Ferme la session PowerShell
+        psShell.Terminate()
+        psShell := ""  ; Libère l'objet
+    }
+}
+
 ; Initialisation personnalisée, le cas échéant, des variables globales
 ipRouter := IniRead("config.ini", "main", "ROUTER_IP")
 if(!ipRouter || !ValidIP(ipRouter)){
@@ -202,10 +231,9 @@ checkForOffTime(){
 
 waitForNetwork(){
 	; Vérification BOX joignable
-	cmd := "powershell.exe -ExecutionPolicy Bypass -Command Test-NetConnection " . ipRouter . " -InformationLevel Quiet "	
+	cmd := " Test-NetConnection " . ipRouter . " -InformationLevel Quiet "	
 
-	objShell := ComObject("WScript.Shell")
-	result := objShell.Exec(cmd).StdOut.ReadAll()
+	result := SendToPS(cmd)
 
 	if(!InStr(result, "True")){	
 		noticeText := "La box 4G est injoignable, veuillez vérifier la connexion..."
@@ -229,10 +257,8 @@ waitForNetwork(){
 }
 
 runBoxCmd(command){
-	cmd := "powershell.exe -ExecutionPolicy Bypass -File " . A_WorkingDir . "\manage_sms.ps1 " . command
-
-	objShell := ComObject("WScript.Shell")
-	result := objShell.Exec(cmd).StdOut.ReadAll()
+	cmd := " " . A_WorkingDir . "\manage_sms.ps1 " . command
+	result := SendToPS(cmd)
 
 	; Gestion des erreurs
 	if(InStr(result, "ERROR")){
@@ -643,9 +669,9 @@ contactsArray := StrSplit(Utf8ToText(iniList),"`n")
 if(contactsArray.Length){
 	Loop contactsArray.Length
 	{
-		line := contactsArray[A_Index]
-		egalPos := InStr(line, "=")
-    contactsList.push(SubStr(line, egalPos + 1) . " (" . SubStr(line, 1, egalPos - 1) . ")") 
+		contactLine := contactsArray[A_Index]
+		egalPos := InStr(contactLine, "=")
+    contactsList.push(SubStr(contactLine, egalPos + 1) . " (" . SubStr(contactLine, 1, egalPos - 1) . ")") 
 	}
 	DDLContactChoice := SendSMSGUI.Add("DropDownList", "ys w200", contactsList)
 	DDLContactChoice.OnEvent("Change", ChangeContact)
@@ -713,16 +739,16 @@ SendSMSGUIButtonEnvoi(*){
 		dest := "au " . numberDest.Text
 	}
 
-	msgResult := MsgBox("Le message suivant va être envoyé " dest " : `n`n `"" messageToDest.Text "`" `n `n Confirmer l'envoi ?", "Confirmation", 33)
+	msgResult := MsgBox("Le message suivant va être envoyé " dest " : `n`n « " messageToDest.Text " » `n `n Confirmer l'envoi ?", "Confirmation", 33)
 	if (msgResult = "OK")
 	{
 	; suppression des caractères à pb
-		message := StrReplace(messageToDest.Text, "`"", "`"`"`"")
+		message := StrReplace(messageToDest.Text, "`"", "*")
 		message := StrReplace(message, ">", "_")
 		message := StrReplace(message, "<", "_")
 		SendSMSGUI.Hide()
 		SplashTextGui := Gui("ToolWindow -Sysmenu Disabled", "BOX 4G : SMS"), SplashTextGui.Add("Text",, "Envoi en cours..."), SplashTextGui.Show("w200 h50")
-		sendReturn := runBoxCmd("send-sms `"" . message . "`" " . numberDest.Text)
+		sendReturn := runBoxCmd("send-sms `"" message "`" `"" numberDest.Text "`"")
 		if(InStr(sendReturn, "<response>OK</response>")){
 			SplashTextGui := Gui("ToolWindow -Sysmenu Disabled", "BOX 4G : SMS"), SplashTextGui.Add("Text",, "Le message a bien été envoyé !"), SplashTextGui.Show("w200 h50")
 			Sleep(1000)
