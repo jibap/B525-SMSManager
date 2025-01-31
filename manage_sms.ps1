@@ -63,14 +63,16 @@ function PostRouterData($relativeUrl, $data, $askNewToken) {
 
     if ((-not [string]::IsNullOrEmpty($responseXML.error)) -and ($relativeUrl -ne "/api/user/logout") ) {   
         switch ($responseXML.error.code) {
-            "125003" { Write-Host "ERROR : TOKEN ERROR" -ForegroundColor Red }
-            "100003" { Write-Host "ERROR : UNAUTHORIZED" -ForegroundColor Red }
-            "108006" { Write-Host "ERROR : BAD USER OR PASSWORD" -ForegroundColor Red }
-            "108007" { Write-Host "ERROR : BAD USER OR PASSWORD" -ForegroundColor Red }
-            "108003" { Write-Host "ERROR : TOO MANY USERS CONNECTED" -ForegroundColor Red }
+            "125003" { writeOut "ERROR : TOKEN ERROR" }
+            "100003" { writeOut "ERROR : UNAUTHORIZED" }
+            "108006" { writeOut "ERROR : BAD USER OR PASSWORD" }
+            "108007" { writeOut "ERROR : BAD USER OR PASSWORD" }
+            "108003" { writeOut "ERROR : TOO MANY USERS CONNECTED" }
+            "113114" { writeOut "ERROR : INDEX GIVEN IS UNAVAILABLE" }            
+            "113055" { writeOut "ERROR : INDEX GIVEN IS ALREADY SET AS READ" }
             default {
-                Write-Host "UNKNOWN ERROR WITH API REQUEST : " $responseXML.error.code -ForegroundColor Red
-                Write-Host $relativeUrl $data
+                writeOut "UNKNOWN ERROR WITH API REQUEST : " $responseXML.error.code
+                writeOut $relativeUrl $data
             }
         }
         return
@@ -94,13 +96,13 @@ function loggedin_check() {
 
         if ($session_state -eq "0") {
             $loggedin = $true
-           #  Write-Host "LOGIN SUCCESS"  -ForegroundColor Green
+           #  writeOut "LOGIN SUCCESS"  -ForegroundColor Green
         }else{
-            Write-Host "ERROR : STATE = $session_state"  -ForegroundColor Red
+            writeOut "ERROR : STATE = $session_state" 
         }
     } 
     if(-not($loggedin)){
-        Write-Host "ERROR : LOGIN" -ForegroundColor Red
+        writeOut "ERROR : LOGIN"
     }
 }
 
@@ -155,24 +157,32 @@ function TagAllAsRead() {
     foreach ($message in $messages) {
         if ($message.Smstat -eq 0) {
             $index = $message.Index
-            $response = PostRouterData "/api/sms/set-read" "<request><Index>$index</Index></request>" $true
+            TagSmsAsRead($index)
         }
     }
 }
 
-function DeleteSMS($boxType){
+function TagSmsAsRead($sms_index) {
+   $response = PostRouterData "/api/sms/set-read" "<request><Index>$sms_index</Index></request>" $true
+}
+
+function DeleteSmsType($boxType){
     $response = GetSMS $boxType
     [xml]$responseXML = $response
     $messages = $responseXML.response.messages.message
     foreach ($message in $messages) {
         $index = $message.Index
-        $response = PostRouterData "/api/sms/delete-sms" "<request><Index>$index</Index></request>" $true
+        DeleteSms($index)
     }
 }
 
+function DeleteSms($sms_index) {
+   $response = PostRouterData "/api/sms/delete-sms" "<request><Index>$sms_index</Index></request>" $true
+}
+
 function DeleteAll($boxType) {
-    DeleteSMS 1 #reçus
-    DeleteSMS 2 #envoyés
+    DeleteSmsType 1 #reçus
+    DeleteSmsType 2 #envoyés
 }
 
 function SendSMS($number, $message) {
@@ -194,30 +204,40 @@ function ChangeWifiStatus($status) {
     $response = PostRouterData "/api/wlan/status-switch-settings" $data $true
 }
 
+function writeOut($text){
+    if ($Host.Name -match "ConsoleHost") {
+        # Exécution dans un vrai terminal PowerShell -> Afficher en couleur
+        Write-Host $text -ForegroundColor Red
+    } else {
+        # Exécution depuis AHK ou un autre script -> Sortie lisible via StdOut
+        $text
+    }
+}
+
 ############################
 #### BEDUT DU PROGRAMME ####
 ############################
 
-# Force le dossier d' x cution
+# Force le dossier d'éxécution
 Set-Location -Path $PSScriptRoot
 
 $CONFIG_FILE = "config.ini"
 # $TMP_HEADER_FILE = "$env:TEMP\headers.tmp"
 
 if (-not (Test-Path $CONFIG_FILE)) {
-    Write-Host "ERROR: Config file [config.ini] not found" -ForegroundColor Red
+    writeOut "ERROR: Config file [config.ini] not found"
     #Exit
 }
 
 $CONFIG = Get-Content $CONFIG_FILE | Where-Object {$_ -match "="} | ConvertFrom-StringData
 $script:ROUTER_IP = if (($CONFIG.ROUTER_IP) -and (IsValidIP($CONFIG.ROUTER_IP))) { $CONFIG.ROUTER_IP } else { '192.168.8.1'}
 $script:ROUTER_USERNAME = if ($CONFIG.ROUTER_USERNAME) { $CONFIG.ROUTER_USERNAME } else { 'admin' }
-$script:ROUTER_PASSWORD = if ($CONFIG.ROUTER_PASSWORD) { $CONFIG.ROUTER_PASSWORD } else { Write-Host "ERROR: No password configured" -ForegroundColor Red; exit }
+$script:ROUTER_PASSWORD = if ($CONFIG.ROUTER_PASSWORD) { $CONFIG.ROUTER_PASSWORD } else { writeOut "ERROR: No password configured"; exit }
 $script:SESSIONID = ""
 $script:TOKEN = ""
 
 if(-not(Test-NetConnection $script:ROUTER_IP -InformationLevel Quiet)){
-    Write-Host "ERROR : Router unreachable > $script:ROUTER_IP"
+    writeOut "ERROR : Router unreachable > $script:ROUTER_IP"
     exit
 }
 
@@ -228,9 +248,11 @@ Usage: manage_sms.ps1 <command>
 
 Commands:
     get-count [Unread,Inbox,Outbox,All]
-    get-sms [1=re us (par defaut), 2=envoy s]
+    get-sms [1=reçus (par défaut), 2=envoyés]
     read-all
-    delete-sms [1=re us (par defaut), 2=envoy s]
+    read-sms <Index>
+    delete-sms-type [1=reçus (par défaut), 2=envoyés]
+    delete-sms <Index>
     delete-all
     get-wifi
     activate-wifi
@@ -238,8 +260,8 @@ Commands:
     send-sms <Message> <Numero>"
 
 if ($args.Count -lt 1) {
-    Write-Host "ERROR: At least 1 parameter required" -ForegroundColor Red
-    Write-Host $syntax
+    writeOut "ERROR: At least 1 parameter required"
+    writeOut $syntax
     exit
 }
 
@@ -247,7 +269,7 @@ if ($args[0] -eq "get-count") {
     $getCountOptions = @("Unread", "Inbox", "Outbox", "All")
      
     if (-not $args[1] -or !($getCountOptions -contains $args[1])) {
-        Write-Host "ERROR: Second parameter required, available options: <Unread / Inbox / Outbox / All>" -ForegroundColor Red
+        writeOut "ERROR: Second parameter required, available options: <Unread / Inbox / Outbox / All>"
         exit
     } else {
         $BOX_TYPE = $args[1]
@@ -262,7 +284,7 @@ if ($args[0] -eq "get-sms") {
     }
 }
 
-if ($args[0] -eq "delete-sms") {
+if ($args[0] -eq "delete-sms-type") {
     if (-not $args[1] -or ($args[1] -ne "1" -and $args[1] -ne "2")) {
         $BOX_TYPE = 1
     } else {
@@ -270,16 +292,25 @@ if ($args[0] -eq "delete-sms") {
     }
 }
 
+if ($args[0] -eq "read-sms" -or $args[0] -eq "delete-sms") {
+    if (-not $args[1]) {
+        writeOut "ERROR: Second parameter required <Index>"
+        exit
+    } else {
+        $SMS_INDEX = $args[1]
+    }
+}
+
 if ($args[0] -eq "send-sms") {
     if (-not $args[1]) {
-        Write-Host "ERROR: Second parameter required <Message>" -ForegroundColor Red
+        writeOut "ERROR: Second parameter required <Message>"
         exit
     } else {
         $SMS_TEXT = $args[1]
     }
 
     if (-not $args[2]) {
-        Write-Host "ERROR: Third parameter required <Numero>" -ForegroundColor Red
+        writeOut "ERROR: Third parameter required <Numero>"
         exit
     } else {
         $SMS_NUMBER = $args[2]
@@ -297,16 +328,18 @@ Login
 switch ($args[0]) {
     "get-count" { GetCount $BOX_TYPE }
     "get-sms" { GetSMS $BOX_TYPE }
+    "read-sms" { TagSmsAsRead $SMS_INDEX}
     "read-all" { TagAllAsRead }
-    "delete-sms" { DeleteSms $BOX_TYPE }
+    "delete-sms-type" { DeleteSmsType $BOX_TYPE }
+    "delete-sms" { DeleteSms $SMS_INDEX}
     "delete-all" { DeleteAll }
     "send-sms" { SendSMS $SMS_NUMBER $SMS_TEXT }
-    "get-wifi" { $status = GetWifiStatus; Write-Host -NoNewline $status }
+    "get-wifi" { $status = GetWifiStatus; writeOut $status }
     "activate-wifi" {  ChangeWifiStatus "1" }
     "deactivate-wifi" { ChangeWifiStatus "0" }
     default {
-        Write-Host "ERROR: Command '$($args[0])' unavailable" -ForegroundColor Red
-        Write-Host $syntax
+        writeOut "ERROR: Command '$($args[0])' unavailable"
+        writeOut $syntax
     }
 }
 
