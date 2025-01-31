@@ -552,7 +552,7 @@ ListSMSClick(LV_SMS, SelectedRowNumber){
 		; met à jour les champs d'affichage complet
 		FullNumeroEdit.Text := longNumero
 		FullDateText.Text := longDate
-		longText := StrReplace(longText, A_Space " ↳ " A_Space, "`n")
+		longText := StrReplace(longText, A_Space " ↳ " A_Space, "`r`n")
 		FullMessageEdit.Text := longText
 	}
 }
@@ -746,20 +746,19 @@ SendSMSGUIButtonEnvoi(*){
 		message := StrReplace(messageToDest.Text, "`"", "*")
 		message := StrReplace(message, ">", "_")
 		message := StrReplace(message, "<", "_")
+		message := StrReplace(message, "`r`n", "_NL_")
+		MsgBox message
 		SendSMSGUI.Hide()
-		SplashTextGui := Gui("ToolWindow -Sysmenu Disabled", "BOX 4G : SMS"), SplashTextGui.Add("Text",, "Envoi en cours..."), SplashTextGui.Show("w200 h50")
 		sendReturn := runBoxCmd("send-sms `"" message "`" `"" numberDest.Text "`"")
 		if(InStr(sendReturn, "<response>OK</response>")){
 			SplashTextGui := Gui("ToolWindow -Sysmenu Disabled", "BOX 4G : SMS"), SplashTextGui.Add("Text",, "Le message a bien été envoyé !"), SplashTextGui.Show("w200 h50")
-			Sleep(1000)
+			Sleep(2000)
 			SplashTextGui.Destroy()
 			messageToDest.Text := ""
 			SendSMSGUI.Hide()
 			refresh()
 		}else{
-			SplashTextGui.Destroy()
 			MsgBox("Le message n'a pas pu être envoyé. `n Veuillez vérifier votre saisie...", "ERREUR", 48)
-			Sleep(100)
 			SendSMSGUI.Show()
 		}
 	}
