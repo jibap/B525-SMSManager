@@ -213,7 +213,7 @@ setTrayIcon(iconName){
 	TraySetIcon(iconFile)
 }
 
-checkForOffTime(){
+checkForWifiAutoOff(){
 	; If Wifi enabled
 	if(wifiStatus = 1){
 		; check if wifi off is set
@@ -229,7 +229,9 @@ checkForOffTime(){
 	}
 }
 
-waitForNetwork(){
+boxIsReachable(){
+	Global lastIcon
+	Global data
 	; Vérification BOX joignable
 	cmd := " Test-NetConnection " . ipRouter . " -InformationLevel Quiet "	
 
@@ -237,23 +239,43 @@ waitForNetwork(){
 
 	if(!InStr(result, "True")){	
 		noticeText := "La box 4G est injoignable, veuillez vérifier la connexion..."
+		
+		; Disable buttons 
+		if(wifiStatus = 1){
+			trayMenu.Disable("Désactiver le Wifi")
+		}else{
+			trayMenu.Disable("Activer le Wifi")
+		}
+		trayMenu.Disable("Envoyer un SMS")
+
 		quiet := !guiIsActive()
 		if(!quiet){	
 			TrayTip(noticeText, "Erreur")
 		}
 		A_IconTip := noticeText
+
 		; actualisation de l'icone 
 		setTrayIcon("net")
-
-		Global lastIcon
 		lastIcon := "net"
 
-		Global data
-		data := {}
+		netStatus := False
+	}else{
 
-		Sleep(20000) ; Nouvelle tentative toutes les 20s
-		waitForNetwork()
+		if(wifiStatus = 1){
+			trayMenu.Enable("Désactiver le Wifi")
+		}else{
+			trayMenu.Enable("Activer le Wifi")
+		}
+		trayMenu.Enable("Envoyer un SMS")
+		netStatus := True
 	}
+
+	SwitchWifiButton.Enabled := netStatus
+	SendSMSButton.Enabled := netStatus
+	ReadAllButton.Enabled := netStatus
+	DeleteAllButton.Enabled := netStatus
+
+	return netStatus
 }
 
 runBoxCmd(command){
@@ -264,7 +286,7 @@ runBoxCmd(command){
 	if(InStr(result, "ERROR")){
 		; Cas spécial où il y a une erreur de joignabilité
 		if(InStr(result, "Router unreachable")){
-			waitForNetwork()
+			boxIsReachable()
 		}else{
 			errorText := "Une erreur est survenue : `n`n" . result
 			; Cas spécial où il y a une erreur de mot de passe, quitte l'application immédiatement
@@ -299,24 +321,32 @@ refreshWifiStatus(force){
 }
 
 refresh(*){
-	checkForOffTime()
-
 	Global data
 	Global wifiStatus
 	Global lastIcon
-	RefreshButton.Enabled := false
-	DeleteAllButton.Enabled := false
-	ReadAllButton.Enabled := false
+
+	; Clean data
+	data := {}
 	LV_SMS.Delete() ; clear the table
 	clearFullSMS()
 	; Init
 	lastIcon := "noSMS"
 	tooltipTitle := "Aucun nouveau message"
 
-	setTrayIcon("load")
+	; Check for network first
+	if(!boxIsReachable()){
+		return 
+	}
+
+	; NETWORK IS OK => GO REFRESH
+	RefreshButton.Enabled := false
+	DeleteAllButton.Enabled := false
+	ReadAllButton.Enabled := false
+	checkForWifiAutoOff()
 
 	quiet := !guiIsActive()
 
+	setTrayIcon("load")
 	if(!quiet){
 		SplashTextGui := Gui("ToolWindow -Sysmenu Disabled", "BOX 4G"), SplashTextGui.Add("Text",, "Actualisation, merci de patienter..."), SplashTextGui.Show("w300 h40")
 	}
@@ -747,7 +777,6 @@ SendSMSGUIButtonEnvoi(*){
 		message := StrReplace(message, ">", "_")
 		message := StrReplace(message, "<", "_")
 		message := StrReplace(message, "`r`n", "_NL_")
-		MsgBox message
 		SendSMSGUI.Hide()
 		sendReturn := runBoxCmd("send-sms `"" message "`" `"" numberDest.Text "`"")
 		if(InStr(sendReturn, "<response>OK</response>")){
