@@ -132,12 +132,12 @@ trayMenu.add()
 trayMenu.add("Actualiser", refresh)
 trayMenu.Default := "Ouvrir l'interface"
 
-trayMenu.SetIcon("Quitter l'application", "shell32.dll", deleteIconID)
-trayMenu.SetIcon("Paramètres", "shell32.dll", settingsIconID)
-trayMenu.SetIcon("Activer le Wifi", "ddores.dll", enableWifiIconID)
-trayMenu.SetIcon("Ouvrir la page Web", "shell32.dll", openWebPageIconID)
-trayMenu.SetIcon("Envoyer un SMS", "shell32.dll", sendSMSIconID)
-trayMenu.SetIcon("Actualiser", "shell32.dll", refreshIconID)
+trayMenu.SetIcon("1&", "shell32.dll", deleteIconID)
+trayMenu.SetIcon("3&", "ddores.dll", enableWifiIconID)
+trayMenu.SetIcon("4&", "shell32.dll", sendSMSIconID)
+trayMenu.SetIcon("6&", "shell32.dll", settingsIconID)
+trayMenu.SetIcon("8&", "shell32.dll", openWebPageIconID)
+trayMenu.SetIcon("11&", "shell32.dll", refreshIconID)
 
 
 ; #####   ###   #   #   ###   #####   ###    ###   #   #   ###
@@ -229,44 +229,34 @@ checkForWifiAutoOff(){
 	}
 }
 
-boxIsReachable(){
+boxIsReachable(ForceTrayTip){
 	Global lastIcon
 	Global data
 	; Vérification BOX joignable
 	cmd := " Test-NetConnection " . ipRouter . " -InformationLevel Quiet "	
-
 	result := SendToPS(cmd)
 
 	if(!InStr(result, "True")){	
 		noticeText := "La box 4G est injoignable, veuillez vérifier la connexion..."
 		
 		; Disable buttons 
-		if(wifiStatus = 1){
-			trayMenu.Disable("Désactiver le Wifi")
-		}else{
-			trayMenu.Disable("Activer le Wifi")
-		}
-		trayMenu.Disable("Envoyer un SMS")
-
-		quiet := !guiIsActive()
-		if(!quiet){	
-			TrayTip(noticeText, "Erreur")
-		}
-		A_IconTip := noticeText
+		trayMenu.Disable("3&") ; Wifi
+		trayMenu.Disable("4&") ; Send SMS
 
 		; actualisation de l'icone 
 		setTrayIcon("net")
 		lastIcon := "net"
 
+		quiet := !guiIsActive()
+		if(!quiet || ForceTrayTip){	
+			TrayTip(noticeText, "Erreur", 36)
+		}
+		A_IconTip := noticeText
 		netStatus := False
 	}else{
 
-		if(wifiStatus = 1){
-			trayMenu.Enable("Désactiver le Wifi")
-		}else{
-			trayMenu.Enable("Activer le Wifi")
-		}
-		trayMenu.Enable("Envoyer un SMS")
+		trayMenu.Enable("3&") ; Wifi
+		trayMenu.Enable("4&") ; Send SMS
 		netStatus := True
 	}
 
@@ -286,7 +276,7 @@ runBoxCmd(command){
 	if(InStr(result, "ERROR")){
 		; Cas spécial où il y a une erreur de joignabilité
 		if(InStr(result, "Router unreachable")){
-			boxIsReachable()
+			boxIsReachable(true)
 		}else{
 			errorText := "Une erreur est survenue : `n`n" . result
 			; Cas spécial où il y a une erreur de mot de passe, quitte l'application immédiatement
@@ -330,11 +320,10 @@ refresh(*){
 	LV_SMS.Delete() ; clear the table
 	clearFullSMS()
 	; Init
-	lastIcon := "noSMS"
 	tooltipTitle := "Aucun nouveau message"
 
 	; Check for network first
-	if(!boxIsReachable()){
+	if(!boxIsReachable(false)){
 		return 
 	}
 
@@ -381,14 +370,6 @@ refresh(*){
 	if(data.inboxSMSCount > 0 || data.outboxSMSCount > 0){
 		DeleteAllButton.Enabled := True
 
-		; Création de la liste
-		if(data.inboxSMSCount > 0){
-			createSmsList(1,data.inboxSMSList)
-		}
-		if(data.outboxSMSCount > 0){
-			createSmsList(2,data.outboxSMSList)
-		}
-
 		; TOOLTIP UPDATE
 		If (data.unreadSMSCount > 0){
 			ReadAllButton.Enabled := True
@@ -398,12 +379,23 @@ refresh(*){
 			}else{
 				tooltipTitle := data.unreadSMSCount . " nouveaux messages"
 			}
+			; actualisation de l'icone BEFORE createSmSlist() TO HAVE GOOD ICON
 			lastIcon := "more"
+			setTrayIcon(lastIcon)
 		}
+
+		; Création de la liste
+		if(data.inboxSMSCount > 0){
+			createSmsList(1,data.inboxSMSList)
+		}
+		if(data.outboxSMSCount > 0){
+			createSmsList(2,data.outboxSMSList)
+		}
+	}else{
+		lastIcon := "noSMS"
+		setTrayIcon(lastIcon)
 	}
 
-	; actualisation de l'icone 
-	setTrayIcon(lastIcon)
 	; actualisation de l'infobulle de l'icone
 	A_IconTip := tooltipTitle " `n " data.inboxSMSCount " reçu(s) `n " data.outboxSMSCount " envoyé(s)"
 
@@ -492,9 +484,9 @@ ListSMS_RCMenu := Menu()  ; Création du menu contextuel
 ListSMS_RCMenu.Add("Répondre", reply)
 ListSMS_RCMenu.Add("Supprimer", deleteSMS)
 ListSMS_RCMenu.Add("Marquer comme lu", tagSMSAsRead)
-ListSMS_RCMenu.SetIcon("Répondre", "shell32.dll", cancelIconID)
-ListSMS_RCMenu.SetIcon("Supprimer", "shell32.dll", deleteIconID)
-ListSMS_RCMenu.SetIcon("Marquer comme lu", "shell32.dll", validIconID)
+ListSMS_RCMenu.SetIcon("1&", "shell32.dll", cancelIconID)
+ListSMS_RCMenu.SetIcon("2&", "shell32.dll", deleteIconID)
+ListSMS_RCMenu.SetIcon("3&", "shell32.dll", validIconID)
 
 
 ListSMSGUIOpen(){
@@ -537,7 +529,7 @@ createSmsList(boxType, SMSList){
 					
 					if ! WinExist("ahk_id " ListSMSGUI.Hwnd){	
 						; affichage d'une notification pour chaque message si interface non affichée
-						TrayTip(contentMessageTT, "SMS Box4G : " contactName, 32 )
+						TrayTip(contentMessageTT, "SMS Box4G : " contactName, 36 )
 					}
 			}
 			contentMessage := StrReplace(contentMessage, "`n", A_Space " ↳ " A_Space)
@@ -724,17 +716,19 @@ SendSMSGUI.OnEvent("Close", SendSMSGUIGuiClose)
 SendSMSGUI.OnEvent("Escape", SendSMSGUIGuiClose)
 
 SendSMSGUIShow(*){	
-	if(contactsList.Length){
-		; Force init
-		DDLContactChoice.Enabled := True
-		DDLContactChoice.Value := 1
-		ChangeContact() 
-	}else{
-		numberDest.Text := ""
+	if(boxIsReachable(true)){
+		if(contactsList.Length){
+			; Force init
+			DDLContactChoice.Enabled := True
+			DDLContactChoice.Value := 1
+			ChangeContact() 
+		}else{
+			numberDest.Text := ""
+		}
+		numberDest.Enabled := True
+		SendSMSGUI.Show()
+		messageToDest.focus()
 	}
-	numberDest.Enabled := True
-	SendSMSGUI.Show()
-	messageToDest.focus()
 }
 
 ChangeContact(*){
@@ -804,29 +798,31 @@ SendSMSGUIButtonEnvoi(*){
 
 
 SwitchWifi(*){
-	setTrayIcon("load")
-	Global wifiStatus
-	quietGui := !guiIsActive()
-	if(!quietGui){
-		SwitchWifiButton.Enabled := false
-	}
+	if(boxIsReachable(true)){
+		setTrayIcon("load")
+		Global wifiStatus
+		quietGui := !guiIsActive()
+		if(!quietGui){
+			SwitchWifiButton.Enabled := false
+		}
 
-	if(wifiStatus = 1){
-		SplashTextGui := Gui("ToolWindow -Sysmenu Disabled", "BOX 4G : WIFI"), SplashTextGui.Add("Text",, "Désactivation du WIFI..."), SplashTextGui.Show("w200 h50")
-		runBoxCmd("deactivate-wifi")
-		wifiStatus := "0"
-	}	else{
-		SplashTextGui := Gui("ToolWindow -Sysmenu Disabled", "BOX 4G : WIFI"), SplashTextGui.Add("Text",, "Activation du WIFI..."), SplashTextGui.Show("w200 h50")
-		runBoxCmd("activate-wifi")
-		wifiStatus := "1"
-	}
+		if(wifiStatus = 1){
+			SplashTextGui := Gui("ToolWindow -Sysmenu Disabled", "BOX 4G : WIFI"), SplashTextGui.Add("Text",, "Désactivation du WIFI..."), SplashTextGui.Show("w200 h50")
+			runBoxCmd("deactivate-wifi")
+			wifiStatus := "0"
+		}	else{
+			SplashTextGui := Gui("ToolWindow -Sysmenu Disabled", "BOX 4G : WIFI"), SplashTextGui.Add("Text",, "Activation du WIFI..."), SplashTextGui.Show("w200 h50")
+			runBoxCmd("activate-wifi")
+			wifiStatus := "1"
+		}
 
-	SplashTextGui.Destroy()
-	refreshWifiStatus(false)
-	setTrayIcon(false) ;Restore previous icon, set by refresh()
-	if(!quietGui){
-		Sleep(5000) ; evite de changer trop rapidemment quand l'interface est ouverte
-		SwitchWifiButton.Enabled := true
+		SplashTextGui.Destroy()
+		refreshWifiStatus(false)
+		setTrayIcon(false) ;Restore previous icon, set by refresh()
+		if(!quietGui){
+			Sleep(5000) ; evite de changer trop rapidemment quand l'interface est ouverte
+			SwitchWifiButton.Enabled := true
+		}
 	}
 }
 
