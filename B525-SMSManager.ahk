@@ -36,7 +36,7 @@ if !FileExist("config.ini") {
 wifiStatus := "0"
 lastIcon := "noSMS"
 data := {}
-helpText := "Cliquer sur une ligne pour afficher et pouvoir sélectionner le texte du SMS dans cette zone. DoubleClick pour répondre... "
+helpText := "Cliquer sur une ligne pour afficher et pouvoir sélectionner le texte du SMS dans cette zone. Double-Clic pour répondre... "
 
 ; ICONS
 validIconID := "301"
@@ -46,13 +46,15 @@ enableWifiIconID := "53"
 openWebPageIconID := "136"
 sendSMSIconID := "215"
 refreshIconID := "239"
-deleteIconID := "132"
+deleteIconID := "32"
+quitIconID := "132"
 numeroIconID := "Icon161"
 dateIconID := "Icon250"
 messageIconID := "Icon157"
-hideIconID := "248"
+hideIconID := "176"
 cancelIconID := "296"
 settingsIconID := "315"
+sendIconID := "195"
 
 ; GET WINDOWS VERSION
 objWMIService := ComObjGet("winmgmts:{impersonationLevel=impersonate}!\\" A_ComputerName "\root\cimv2")
@@ -132,7 +134,7 @@ trayMenu.add()
 trayMenu.add("Actualiser", refresh)
 trayMenu.Default := "Ouvrir l'interface"
 
-trayMenu.SetIcon("1&", "shell32.dll", deleteIconID)
+trayMenu.SetIcon("1&", "shell32.dll", quitIconID)
 trayMenu.SetIcon("3&", "ddores.dll", enableWifiIconID)
 trayMenu.SetIcon("4&", "shell32.dll", sendSMSIconID)
 trayMenu.SetIcon("6&", "shell32.dll", settingsIconID)
@@ -171,7 +173,7 @@ ValidIP(IPAddress){
 Utf8ToText(vUtf8){
   if 1
   {
-    VarSetStrCapacity(&vTemp, StrPut(vUtf8, "CP0")) ; V1toV2: if 'vTemp' is NOT a UTF-16 string, use 'vTemp := Buffer(StrPut(vUtf8, "CP0"))' and replace all instances of 'StrPtr(vTemp)' with 'vTemp.Ptr'
+    VarSetStrCapacity(&vTemp, StrPut(vUtf8, "CP0"))
     StrPut(vUtf8, StrPtr(vTemp), "CP0")
     return StrGet(StrPtr(vTemp), "UTF-8")
   }
@@ -231,9 +233,8 @@ checkForWifiAutoOff(){
 
 boxIsReachable(ForceTrayTip){
 	Global lastIcon
-	Global data
 	; Vérification BOX joignable
-	cmd := " Test-NetConnection " . ipRouter . " -InformationLevel Quiet "	
+	cmd := "[Console]::OutputEncoding = [Text.UTF8Encoding]::UTF8; Test-Connection " . ipRouter . " -Count 1 -Quiet"	
 	result := SendToPS(cmd)
 
 	if(!InStr(result, "True")){	
@@ -321,6 +322,7 @@ refresh(*){
 	clearFullSMS()
 	; Init
 	tooltipTitle := "Aucun nouveau message"
+	lastIcon := "noSMS"
 
 	; Check for network first
 	if(!boxIsReachable(false)){
@@ -391,7 +393,9 @@ refresh(*){
 		if(data.outboxSMSCount > 0){
 			createSmsList(2,data.outboxSMSList)
 		}
-	}else{
+	}
+	; If lastIcon has not changed 
+	if(lastIcon != "more"){
 		lastIcon := "noSMS"
 		setTrayIcon(lastIcon)
 	}
@@ -426,8 +430,8 @@ ListSMSGUI.Title := "B525-Manager"
 
 ; Top Buttons
 RefreshButton := ListSMSGUI.Add("Button", "x10 y8 w100 r2", A_Space . "Actualiser")
-ReadAllButton := ListSMSGUI.Add("Button", "x200 y8 w200 r2 Disabled", A_Space . "Marquer les messages comme lus")
-DeleteAllButton := ListSMSGUI.Add("Button", "x420 y8 w180 r2 Disabled", A_Space . "Supprimer les messages")
+ReadAllButton := ListSMSGUI.Add("Button", "x120 y8 w150 r2 Disabled", A_Space . "Marquer comme lu")
+DeleteAllButton := ListSMSGUI.Add("Button", "x280 y8 w150 r2 Disabled", A_Space . "Supprimer")
 openSettingsButton := ListSMSGUI.Add("Button", "x675 y8 w35 r2", A_Space)
 
 ; List View
@@ -455,7 +459,7 @@ SetButtonIcon(openSettingsButton, "shell32.dll", settingsIconID, 20)
 SetButtonIcon(openWebPageButton, "shell32.dll", openWebPageIconID, 20)
 SetButtonIcon(SwitchWifiButton, "ddores.dll", enableWifiIconID, 20)
 SetButtonIcon(SendSMSButton, "shell32.dll", sendSMSIconID, 20)
-SetButtonIcon(HideGUIButton, "shell32.dll", hideIconID, 20)
+SetButtonIcon(HideGUIButton, "imageres.dll", hideIconID, 20)
 
 LV_SMS.SetImageList(ImageListID)  ; Assign the above ImageList to the current ListView.
 
@@ -540,6 +544,7 @@ createSmsList(boxType, SMSList){
 }
 
 OpenListSMSGUI(*){
+	refresh()
 	ListSMSGUIOpen()
 }
 
@@ -707,7 +712,7 @@ EnvoiButton := SendSMSGUI.Add("Button", "ys  w150 r2", "Envoi")
 
 ; ICONS
 SetButtonIcon(CancelButton, "shell32.dll", cancelIconID, 20)
-SetButtonIcon(EnvoiButton, "shell32.dll", validIconID, 20)
+SetButtonIcon(EnvoiButton, "imageres.dll", sendIconID, 20)
 
 ; EVENTS
 CancelButton.OnEvent("Click", SendSMSGUIGuiClose)
