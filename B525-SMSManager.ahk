@@ -1,4 +1,4 @@
-Persistent
+Persistent 
 #Warn
 #SingleInstance force ; Force erase previous instance
 
@@ -37,6 +37,7 @@ wifiStatus := "0"
 lastIcon := "noSMS"
 data := {}
 helpText := "Cliquer sur une ligne pour afficher et pouvoir sélectionner le texte du SMS dans cette zone. Double-Clic pour répondre... "
+refreshing := false
 
 ; ICONS
 validIconID := "301"
@@ -70,13 +71,13 @@ if(InStr(windowsVersion, "10")){
 }
 
 ; Ouverture du powershell permanent
-psShell := ComObject("WScript.Shell").Exec("powershell.exe -NoProfile -ExecutionPolicy Bypass -command -")
+psShell := ComObject("WScript.Shell").Exec("powershell -ExecutionPolicy Bypass -command -")
 OnExit(ClosePS)  ; Exécute ClosePS() quand le script se ferme
 
 SendToPS(command) {
     global psShell
     psShell.StdIn.WriteLine(command)
-    psShell.StdIn.WriteLine("echo END_OF_COMMAND")  ; Marqueur de fin
+    psShell.StdIn.WriteLine("echo END_OF_COMMAND;")  ; Marqueur de fin
 
     output := ""
     while !psShell.StdOut.AtEndOfStream {
@@ -315,6 +316,12 @@ refresh(*){
 	Global data
 	Global wifiStatus
 	Global lastIcon
+	Global refreshing
+
+	; Prevent refresh is yet in usage
+	if(refreshing){
+		return
+	}
 
 	; Clean data
 	data := {}
@@ -330,6 +337,7 @@ refresh(*){
 	}
 
 	; NETWORK IS OK => GO REFRESH
+	refreshing := true
 	RefreshButton.Enabled := false
 	DeleteAllButton.Enabled := false
 	ReadAllButton.Enabled := false
@@ -415,6 +423,7 @@ refresh(*){
 		SplashTextGui.Destroy()
 	}
 	RefreshButton.Enabled := true
+	refreshing := false
 }
 
 
@@ -698,7 +707,7 @@ if(contactsArray.Length){
 	{
 		contactLine := contactsArray[A_Index]
 		egalPos := InStr(contactLine, "=")
-    contactsList.push(SubStr(contactLine, egalPos + 1) . " (" . SubStr(contactLine, 1, egalPos - 1) . ")") 
+    	contactsList.push(SubStr(contactLine, egalPos + 1) . " (" . SubStr(contactLine, 1, egalPos - 1) . ")") 
 	}
 	DDLContactChoice := SendSMSGUI.Add("DropDownList", "ys w200", contactsList)
 	DDLContactChoice.OnEvent("Change", ChangeContact)
@@ -771,11 +780,12 @@ SendSMSGUIButtonEnvoi(*){
 	msgResult := MsgBox("Le message suivant va être envoyé " dest " : `n`n « " messageToDest.Text " » `n `n Confirmer l'envoi ?", "Confirmation", 33)
 	if (msgResult = "OK")
 	{
-	; suppression des caractères à pb
-		message := StrReplace(messageToDest.Text, "`"", "*")
-		message := StrReplace(message, ">", "_")
-		message := StrReplace(message, "<", "_")
-		message := StrReplace(message, "`r`n", "_NL_")
+	; encodage des caractères à pb
+		message := StrReplace(messageToDest.Text, "`"", "&quot;")
+		message := StrReplace(message, ">", "&gt;")
+		message := StrReplace(message, "<", "&lt;")
+		message := StrReplace(message, "`r`n", "&#10;")
+		message := StrReplace(message, "&", "&amp;")
 		SendSMSGUI.Hide()
 		sendReturn := runBoxCmd("send-sms `"" message "`" `"" numberDest.Text "`"")
 		if(InStr(sendReturn, "<response>OK</response>")){
