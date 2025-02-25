@@ -33,7 +33,7 @@ if !FileExist("config.ini") {
   ; ###   #   #   ###     #
 
 
-wifiStatus := "0"
+wifiStatus := 0
 lastIcon := "noSMS"
 data := {}
 helpText := "Cliquer sur une ligne pour afficher et pouvoir sélectionner le texte du SMS dans cette zone. Double-Clic pour répondre... "
@@ -70,34 +70,15 @@ if(InStr(windowsVersion, "10")){
 	enableWifiIconID := "51"
 }
 
+; Création d'une liste d'icones système pour la ListView
+ImageListID := IL_Create(3)
+IL_Add(ImageListID, "shell32.dll", validIconID)
+IL_Add(ImageListID, "imageres.dll", outboxIconID)
+IL_Add(ImageListID, "shell32.dll", unreadIconID)
+
 ; Ouverture du powershell permanent
 psShell := ComObject("WScript.Shell").Exec("powershell -ExecutionPolicy Bypass -command -")
 OnExit(ClosePS)  ; Exécute ClosePS() quand le script se ferme
-
-SendToPS(command) {
-    global psShell
-    psShell.StdIn.WriteLine(command)
-    psShell.StdIn.WriteLine("echo END_OF_COMMAND;")  ; Marqueur de fin
-
-    output := ""
-    while !psShell.StdOut.AtEndOfStream {
-        line := psShell.StdOut.ReadLine()
-        ; Ignorer les lignes contenant le préfixe de commande
-        if line = "END_OF_COMMAND"
-            break
-      	output .= line "`n"
-    }
-    return output
-}
-
-ClosePS(*) {  ; Fonction pour fermer proprement le PowerShell
-    global psShell
-    if (psShell) {
-        psShell.StdIn.WriteLine("exit")  ; Ferme la session PowerShell
-        psShell.Terminate()
-        psShell := ""  ; Libère l'objet
-    }
-}
 
 ; Initialisation personnalisée, le cas échéant, des variables globales
 ipRouter := IniRead("config.ini", "main", "ROUTER_IP")
@@ -108,13 +89,6 @@ loopDelay := IniRead("config.ini", "main", "DELAY")
 if(!loopDelay || !RegExMatch(loopDelay, "^\d+$")){
 	loopDelay := "300000" ; Default Loop delay for check
 }
-
-; Création d'une liste d'icones système pour la ListView
-ImageListID := IL_Create(3)
-IL_Add(ImageListID, "shell32.dll", validIconID)
-IL_Add(ImageListID, "imageres.dll", outboxIconID)
-IL_Add(ImageListID, "shell32.dll", unreadIconID)
-
 
 setTrayIcon("noSMS")
 
@@ -143,6 +117,134 @@ trayMenu.SetIcon("8&", "shell32.dll", openWebPageIconID)
 trayMenu.SetIcon("11&", "shell32.dll", refreshIconID)
 
 
+; #      #            #        ##   #  #   ##  			  ##   #  #  ###
+; #                   #       #  #  ####  #  # 			 #  #  #  #   #
+; #     ##     ###   ###       #    ####   #   			 #     #  #   #
+; #      #    ##      #         #   #  #    #  			 # ##  #  #   #
+; #      #      ##    #       #  #  #  #  #  # 			 #  #  #  #   #
+; ####  ###   ###      ##      ##   #  #   ##  			  ###   ##   ###
+
+; CREATION DE LA GUI PRINCIPALE (LIST SMS)
+; ****************************************
+ListSMSGUI := Gui("")
+ListSMSGUI.Title := "B525-Manager"
+
+; Top Buttons
+RefreshButton := ListSMSGUI.Add("Button", "x10 y8 w100 r2", A_Space . "Actualiser")
+ReadAllButton := ListSMSGUI.Add("Button", "x120 y8 w150 r2 Disabled", A_Space . "Marquer comme lu")
+DeleteAllButton := ListSMSGUI.Add("Button", "x280 y8 w150 r2 Disabled", A_Space . "Supprimer")
+openSettingsButton := ListSMSGUI.Add("Button", "x675 y8 w35 r2", A_Space)
+
+; List View
+LV_SMS := ListSMSGUI.Add("ListView", "section xs R10 w700  Grid AltSubmit -Hdr", ["", "contactName", "Time", "Message", "Index", "boxType", "phoneNumber"])
+
+; SMS Details
+ListSMSGUI.Add("Picture", "section " . numeroIconID . " w16 h16", "shell32.dll")
+FullNumeroEdit := ListSMSGUI.Add("Edit", "ReadOnly ys w150 h20")
+ListSMSGUI.Add("Picture", "ys " . dateIconID . " w16 h16", "shell32.dll")
+FullDateText := ListSMSGUI.Add("Text", "ys w200 h20 vFullDate")
+ListSMSGUI.Add("Picture", "section xs " . messageIconID . " w16 h16", "shell32.dll")
+FullMessageEdit := ListSMSGUI.Add("Edit", "ReadOnly ys w670 h50 ", helpText)
+
+; Bottom buttons
+openWebPageButton := ListSMSGUI.Add("Button", "section xs   w150 r2", A_Space . "Page Web de la box 4G")
+SwitchWifiButton := ListSMSGUI.Add("Button", "ys  x200 w140 r2", A_Space . "Activer le Wifi")
+SendSMSButton := ListSMSGUI.Add("Button", "ys  x380 w140 r2", A_Space . "Envoyer un SMS")
+HideGUIButton := ListSMSGUI.Add("Button", "ys  x560 w150 r2", "Cacher la fenêtre")
+
+; BUTTONS ICONS
+SetButtonIcon(RefreshButton, "shell32.dll", refreshIconID, 20)
+SetButtonIcon(ReadAllButton, "shell32.dll", validIconID, 20)
+SetButtonIcon(DeleteAllButton, "shell32.dll", deleteIconID, 20)
+SetButtonIcon(openSettingsButton, "shell32.dll", settingsIconID, 20)
+SetButtonIcon(openWebPageButton, "shell32.dll", openWebPageIconID, 20)
+SetButtonIcon(SwitchWifiButton, "ddores.dll", enableWifiIconID, 20)
+SetButtonIcon(SendSMSButton, "shell32.dll", sendSMSIconID, 20)
+SetButtonIcon(HideGUIButton, "imageres.dll", hideIconID, 20)
+
+LV_SMS.SetImageList(ImageListID)  ; Assign the above ImageList to the current ListView.
+
+; BUTTONS EVENTS 
+RefreshButton.OnEvent("Click", refresh)
+ReadAllButton.OnEvent("Click", tagSMSAsRead)
+DeleteAllButton.OnEvent("Click", deleteSMS)
+openSettingsButton.OnEvent("Click", openSettings)
+
+openWebPageButton.OnEvent("Click", openWebPage)
+SwitchWifiButton.OnEvent("Click", SwitchWifi)
+SendSMSButton.OnEvent("Click", SendSMSGUIShow)
+HideGUIButton.OnEvent("Click", ListSMSGUICLose)
+
+; GUI EVENTS
+LV_SMS.OnEvent("Click", ListSMSClick)
+LV_SMS.OnEvent("ContextMenu", ListSMSRightClick)
+LV_SMS.OnEvent("DoubleClick", reply)
+ListSMSGUI.OnEvent("Close", ListSMSGUICLose)
+ListSMSGUI.OnEvent("Escape", ListSMSGUICLose)
+
+; Menu au clic-droit
+ListSMS_RCMenu := Menu()  ; Création du menu contextuel
+
+; Ajout des éléments avec leurs fonctions associées
+ListSMS_RCMenu.Add("Répondre", reply)
+ListSMS_RCMenu.Add("Supprimer", deleteSMS)
+ListSMS_RCMenu.Add("Marquer comme lu", tagSMSAsRead)
+ListSMS_RCMenu.SetIcon("1&", "shell32.dll", cancelIconID)
+ListSMS_RCMenu.SetIcon("2&", "shell32.dll", deleteIconID)
+ListSMS_RCMenu.SetIcon("3&", "shell32.dll", validIconID)
+
+
+;  ###                     #   ###   #   #   ###  			  ###   #   #   ###
+; #   #                    #  #   #  #   #  #   # 			 #   #  #   #    #
+; #       ###   # ##    ## #  #      ## ##  #     			 #      #   #    #
+;  ###   #   #  ##  #  #  ##   ###   # # #   ###  			 #      #   #    #
+;     #  #####  #   #  #   #      #  #   #      # 			 #  ##  #   #    #
+; #   #  #      #   #  #  ##  #   #  #   #  #   # 			 #   #  #   #    #
+;  ###    ###   #   #   ## #   ###   #   #   ###  			  ###    ###    ###
+
+; GUI d'envoi de SMS
+; *****************************
+
+SendSMSGUI := Gui("")
+SendSMSGUI.Title := "Envoi de SMS sur Box4G"
+
+SendSMSGUI.Add("Text", , "Message:")
+messageToDest := SendSMSGUI.Add("Edit", "w240 r5 ys")
+SendSMSGUI.Add("Text", "section xs w65", "Destinataire :")
+
+contactsList := Array()
+
+iniList := IniRead("config.ini", "contacts")
+contactsArray := StrSplit(Utf8ToText(iniList),"`n")
+
+; REFORMAT CONTACTS LIST
+if(contactsArray.Length){
+	Loop contactsArray.Length
+	{
+		contactLine := contactsArray[A_Index]
+		egalPos := InStr(contactLine, "=")
+    	contactsList.push(SubStr(contactLine, egalPos + 1) . " (" . SubStr(contactLine, 1, egalPos - 1) . ")") 
+	}
+	DDLContactChoice := SendSMSGUI.Add("DropDownList", "ys w200", contactsList)
+	DDLContactChoice.OnEvent("Change", ChangeContact)
+	SendSMSGUI.Add("Text", "section xs w65", "Numéro :")
+}
+
+numberDest := SendSMSGUI.Add("Edit", "ys w80 Limit10 Number")
+
+CancelButton := SendSMSGUI.Add("Button", "section xs  w150 r2", "Annuler")
+EnvoiButton := SendSMSGUI.Add("Button", "ys  w150 r2", "Envoi")
+
+; ICONS
+SetButtonIcon(CancelButton, "shell32.dll", cancelIconID, 20)
+SetButtonIcon(EnvoiButton, "imageres.dll", sendIconID, 20)
+
+; EVENTS
+CancelButton.OnEvent("Click", SendSMSGUIGuiClose)
+EnvoiButton.OnEvent("Click", SendSMSGUIButtonEnvoi)
+SendSMSGUI.OnEvent("Close", SendSMSGUIGuiClose)
+SendSMSGUI.OnEvent("Escape", SendSMSGUIGuiClose)
+
 ; #####   ###   #   #   ###   #####   ###    ###   #   #   ###
 ; #      #   #  #   #  #   #    #      #    #   #  #   #  #   #
 ; #      #   #  ##  #  #        #      #    #   #  ##  #  #
@@ -150,6 +252,33 @@ trayMenu.SetIcon("11&", "shell32.dll", refreshIconID)
 ; #      #   #  #  ##  #        #      #    #   #  #  ##      #
 ; #      #   #  #   #  #   #    #      #    #   #  #   #  #   #
 ; #       ###   #   #   ###     #     ###    ###   #   #   ###
+
+
+; POWERSHELL FUNCTIONS
+SendToPS(command) {
+    global psShell
+    psShell.StdIn.WriteLine(command)
+    psShell.StdIn.WriteLine("echo END_OF_COMMAND;")  ; Marqueur de fin
+
+    output := ""
+    while !psShell.StdOut.AtEndOfStream {
+        line := psShell.StdOut.ReadLine()
+        ; Ignorer les lignes contenant le préfixe de commande
+        if line = "END_OF_COMMAND"
+            break
+      	output .= line "`n"
+    }
+    return output
+}
+
+ClosePS(*) {  ; Fonction pour fermer proprement le PowerShell
+    global psShell
+    if (psShell) {
+        psShell.StdIn.WriteLine("exit")  ; Ferme la session PowerShell
+        psShell.Terminate()
+        psShell := ""  ; Libère l'objet
+    }
+}
 
 ; Fonction qui permets de cliquer sur la notif Windows pour ouvrir la GUI
 clicOnNotif(wParam, lParam, msg, hwnd){
@@ -226,7 +355,8 @@ checkForWifiAutoOff(){
 		    currentTime := FormatTime(, "HHmm")
 		    autoWifiOffTime := StrReplace(autoWifiOff, ":", "")
 		    if (currentTime >= autoWifiOffTime) {
-		     	runBoxCmd("deactivate-wifi")
+		     	SwitchWifi()
+		     	boxIsReachable(false)
 		    }
 		}
 	}
@@ -256,7 +386,6 @@ boxIsReachable(ForceTrayTip){
 		A_IconTip := noticeText
 		netStatus := False
 	}else{
-
 		trayMenu.Enable("3&") ; Wifi
 		trayMenu.Enable("4&") ; Send SMS
 		netStatus := True
@@ -301,6 +430,7 @@ refreshWifiStatus(force){
 	Global wifiStatus
 	if(force = True){
 		wifiStatus := runBoxCmd("get-wifi")
+		wifiStatus := Trim(wifiStatus, "`r`n")
 	}
 
 	; Adaptation des labels du statut WIFI
@@ -341,7 +471,6 @@ refresh(*){
 	RefreshButton.Enabled := false
 	DeleteAllButton.Enabled := false
 	ReadAllButton.Enabled := false
-	checkForWifiAutoOff()
 
 	quiet := !guiIsActive()
 
@@ -422,8 +551,35 @@ refresh(*){
 	if(!quiet){
 		SplashTextGui.Destroy()
 	}
+
+	checkForWifiAutoOff()
 	RefreshButton.Enabled := true
 	refreshing := false
+}
+
+SwitchWifi(*){
+	if(boxIsReachable(true)){
+		Global wifiStatus
+		
+		SwitchWifiButton.Enabled := false
+		trayMenu.Disable("3&") ; Wifi
+
+		refreshWifiStatus(true)
+
+		if(wifiStatus = 1){
+			TrayTip("Désactivation du WIFI...", "BOX 4G", 36)
+			runBoxCmd("deactivate-wifi")
+		}else{
+			TrayTip("Activation du WIFI...", "BOX 4G", 36)
+			runBoxCmd("activate-wifi")
+		}
+		Sleep(5000) ; laisse le temps au wifi de changer de statut
+
+		SwitchWifiButton.Enabled := true
+		trayMenu.Enable("3&") ; Wifi
+
+		refreshWifiStatus(true)
+	}
 }
 
 
@@ -433,74 +589,6 @@ refresh(*){
 ; #      #    ##      #         #   #  #    #  			 # ##  #  #   #
 ; #      #      ##    #       #  #  #  #  #  # 			 #  #  #  #   #
 ; ####  ###   ###      ##      ##   #  #   ##  			  ###   ##   ###
-
-ListSMSGUI := Gui("")
-ListSMSGUI.Title := "B525-Manager"
-
-; Top Buttons
-RefreshButton := ListSMSGUI.Add("Button", "x10 y8 w100 r2", A_Space . "Actualiser")
-ReadAllButton := ListSMSGUI.Add("Button", "x120 y8 w150 r2 Disabled", A_Space . "Marquer comme lu")
-DeleteAllButton := ListSMSGUI.Add("Button", "x280 y8 w150 r2 Disabled", A_Space . "Supprimer")
-openSettingsButton := ListSMSGUI.Add("Button", "x675 y8 w35 r2", A_Space)
-
-; List View
-LV_SMS := ListSMSGUI.Add("ListView", "section xs R10 w700  Grid AltSubmit -Hdr", ["", "contactName", "Time", "Message", "Index", "boxType", "phoneNumber"])
-
-; SMS Details
-ListSMSGUI.Add("Picture", "section " . numeroIconID . " w16 h16", "shell32.dll")
-FullNumeroEdit := ListSMSGUI.Add("Edit", "ReadOnly ys w150 h20")
-ListSMSGUI.Add("Picture", "ys " . dateIconID . " w16 h16", "shell32.dll")
-FullDateText := ListSMSGUI.Add("Text", "ys w200 h20 vFullDate")
-ListSMSGUI.Add("Picture", "section xs " . messageIconID . " w16 h16", "shell32.dll")
-FullMessageEdit := ListSMSGUI.Add("Edit", "ReadOnly ys w670 h50 ", helpText)
-
-; Bottom buttons
-openWebPageButton := ListSMSGUI.Add("Button", "section xs   w150 r2", A_Space . "Page Web de la box 4G")
-SwitchWifiButton := ListSMSGUI.Add("Button", "ys  x200 w140 r2", A_Space . "Activer le Wifi")
-SendSMSButton := ListSMSGUI.Add("Button", "ys  x380 w140 r2", A_Space . "Envoyer un SMS")
-HideGUIButton := ListSMSGUI.Add("Button", "ys  x560 w150 r2", "Cacher la fenêtre")
-
-; BUTTONS ICONS
-SetButtonIcon(RefreshButton, "shell32.dll", refreshIconID, 20)
-SetButtonIcon(ReadAllButton, "shell32.dll", validIconID, 20)
-SetButtonIcon(DeleteAllButton, "shell32.dll", deleteIconID, 20)
-SetButtonIcon(openSettingsButton, "shell32.dll", settingsIconID, 20)
-SetButtonIcon(openWebPageButton, "shell32.dll", openWebPageIconID, 20)
-SetButtonIcon(SwitchWifiButton, "ddores.dll", enableWifiIconID, 20)
-SetButtonIcon(SendSMSButton, "shell32.dll", sendSMSIconID, 20)
-SetButtonIcon(HideGUIButton, "imageres.dll", hideIconID, 20)
-
-LV_SMS.SetImageList(ImageListID)  ; Assign the above ImageList to the current ListView.
-
-; BUTTONS EVENTS 
-RefreshButton.OnEvent("Click", refresh)
-ReadAllButton.OnEvent("Click", tagSMSAsRead)
-DeleteAllButton.OnEvent("Click", deleteSMS)
-openSettingsButton.OnEvent("Click", openSettings)
-
-openWebPageButton.OnEvent("Click", openWebPage)
-SwitchWifiButton.OnEvent("Click", SwitchWifi)
-SendSMSButton.OnEvent("Click", SendSMSGUIShow)
-HideGUIButton.OnEvent("Click", ListSMSGUICLose)
-
-; GUI EVENTS
-LV_SMS.OnEvent("Click", ListSMSClick)
-LV_SMS.OnEvent("ContextMenu", ListSMSRightClick)
-LV_SMS.OnEvent("DoubleClick", reply)
-ListSMSGUI.OnEvent("Close", ListSMSGUICLose)
-ListSMSGUI.OnEvent("Escape", ListSMSGUICLose)
-
-; Menu au clic-droit
-ListSMS_RCMenu := Menu()  ; Création du menu contextuel
-
-; Ajout des éléments avec leurs fonctions associées
-ListSMS_RCMenu.Add("Répondre", reply)
-ListSMS_RCMenu.Add("Supprimer", deleteSMS)
-ListSMS_RCMenu.Add("Marquer comme lu", tagSMSAsRead)
-ListSMS_RCMenu.SetIcon("1&", "shell32.dll", cancelIconID)
-ListSMS_RCMenu.SetIcon("2&", "shell32.dll", deleteIconID)
-ListSMS_RCMenu.SetIcon("3&", "shell32.dll", validIconID)
-
 
 ListSMSGUIOpen(){
 	ListSMSGUI.Show()
@@ -678,56 +766,13 @@ tagSMSAsRead(*){
 
 
 
-;  ###                     #   ###   #   #   ###    ###   #   #   ###
-; #   #                    #  #   #  #   #  #   #  #   #  #   #    #
-; #       ###   # ##    ## #  #      ## ##  #      #      #   #    #
-;  ###   #   #  ##  #  #  ##   ###   # # #   ###   #      #   #    #
-;     #  #####  #   #  #   #      #  #   #      #  #  ##  #   #    #
-; #   #  #      #   #  #  ##  #   #  #   #  #   #  #   #  #   #    #
-;  ###    ###   #   #   ## #   ###   #   #   ###    ###    ###    ###
-
-; SOUS-PROGRAME - GUI d'envoi de SMS
-; *****************************
-
-SendSMSGUI := Gui("")
-SendSMSGUI.Title := "Envoi de SMS sur Box4G"
-
-SendSMSGUI.Add("Text", , "Message:")
-messageToDest := SendSMSGUI.Add("Edit", "w240 r5 ys")
-SendSMSGUI.Add("Text", "section xs w65", "Destinataire :")
-
-contactsList := Array()
-
-iniList := IniRead("config.ini", "contacts")
-contactsArray := StrSplit(Utf8ToText(iniList),"`n")
-
-; REFORMAT CONTACTS LIST
-if(contactsArray.Length){
-	Loop contactsArray.Length
-	{
-		contactLine := contactsArray[A_Index]
-		egalPos := InStr(contactLine, "=")
-    	contactsList.push(SubStr(contactLine, egalPos + 1) . " (" . SubStr(contactLine, 1, egalPos - 1) . ")") 
-	}
-	DDLContactChoice := SendSMSGUI.Add("DropDownList", "ys w200", contactsList)
-	DDLContactChoice.OnEvent("Change", ChangeContact)
-	SendSMSGUI.Add("Text", "section xs w65", "Numéro :")
-}
-
-numberDest := SendSMSGUI.Add("Edit", "ys w80 Limit10 Number")
-
-CancelButton := SendSMSGUI.Add("Button", "section xs  w150 r2", "Annuler")
-EnvoiButton := SendSMSGUI.Add("Button", "ys  w150 r2", "Envoi")
-
-; ICONS
-SetButtonIcon(CancelButton, "shell32.dll", cancelIconID, 20)
-SetButtonIcon(EnvoiButton, "imageres.dll", sendIconID, 20)
-
-; EVENTS
-CancelButton.OnEvent("Click", SendSMSGUIGuiClose)
-EnvoiButton.OnEvent("Click", SendSMSGUIButtonEnvoi)
-SendSMSGUI.OnEvent("Close", SendSMSGUIGuiClose)
-SendSMSGUI.OnEvent("Escape", SendSMSGUIGuiClose)
+;  ###                     #   ###   #   #   ###  		  ###   #   #   ###
+; #   #                    #  #   #  #   #  #   # 		 #   #  #   #    #
+; #       ###   # ##    ## #  #      ## ##  #     		 #      #   #    #
+;  ###   #   #  ##  #  #  ##   ###   # # #   ###  		 #      #   #    #
+;     #  #####  #   #  #   #      #  #   #      # 		 #  ##  #   #    #
+; #   #  #      #   #  #  ##  #   #  #   #  #   # 		 #   #  #   #    #
+;  ###    ###   #   #   ## #   ###   #   #   ###  		  ###    ###    ###
 
 SendSMSGUIShow(*){	
 	if(boxIsReachable(true)){
@@ -802,45 +847,6 @@ SendSMSGUIButtonEnvoi(*){
 	}
 }
 
-
-
-; #   #  ###    ####   ###            ##    #   #  ###    #####   ##    #  #
-; #   #   #     #       #            #  #   #   #   #       #    #  #   #  #
-; # # #   #     ###     #             #     # # #   #       #    #      ####
-; # # #   #     #       #              #    # # #   #       #    #      #  #
-; ## ##   #     #       #            #  #   ## ##   #       #    #  #   #  #
-; #   #  ###    #      ###            ##    #   #  ###      #     ##    #  #
-
-
-SwitchWifi(*){
-	if(boxIsReachable(true)){
-		setTrayIcon("load")
-		Global wifiStatus
-		quietGui := !guiIsActive()
-		if(!quietGui){
-			SwitchWifiButton.Enabled := false
-		}
-
-		if(wifiStatus = 1){
-			SplashTextGui := Gui("ToolWindow -Sysmenu Disabled", "BOX 4G : WIFI"), SplashTextGui.Add("Text",, "Désactivation du WIFI..."), SplashTextGui.Show("w200 h50")
-			runBoxCmd("deactivate-wifi")
-			wifiStatus := "0"
-		}	else{
-			SplashTextGui := Gui("ToolWindow -Sysmenu Disabled", "BOX 4G : WIFI"), SplashTextGui.Add("Text",, "Activation du WIFI..."), SplashTextGui.Show("w200 h50")
-			runBoxCmd("activate-wifi")
-			wifiStatus := "1"
-		}
-
-		SplashTextGui.Destroy()
-		refreshWifiStatus(false)
-		setTrayIcon(false) ;Restore previous icon, set by refresh()
-		if(!quietGui){
-			Sleep(5000) ; evite de changer trop rapidemment quand l'interface est ouverte
-			SwitchWifiButton.Enabled := true
-		}
-	}
-}
-
 ; ####   #   #  #   #
 ; #   #  #   #  #   #
 ; #   #  #   #  ##  #
@@ -848,6 +854,9 @@ SwitchWifi(*){
 ; # #    #   #  #  ##
 ; #  #   #   #  #   #
 ; #   #   ###   #   #
+
+; GET CURRENT WIFI STATUS BEFORE LOOP START
+refreshWifiStatus(true)
 
 Loop{
 	refresh()
