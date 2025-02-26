@@ -1,4 +1,5 @@
 [Console]::OutputEncoding = [Text.UTF8Encoding]::UTF8
+[Console]::InputEncoding = [Text.UTF8Encoding]::UTF8
 
 ############################
 ####     FONCTIONS      ####
@@ -61,7 +62,7 @@ function PostRouterData($relativeUrl, $data, $askNewToken) {
 
     [xml]$responseXML = $response
 
-    if ((-not [string]::IsNullOrEmpty($responseXML.error)) -and ($relativeUrl -ne "/api/user/logout") ) {   
+    if ((-not [string]::IsNullOrEmpty($responseXML.error)) -and ($relativeUrl -ne "/api/user/logout")  -and ($relativeUrl -ne "/api/wlan/status-switch-settings") ) {   
         switch ($responseXML.error.code) {
             "125003" { writeOut "ERROR : TOKEN ERROR" }
             "100003" { writeOut "ERROR : UNAUTHORIZED" }
@@ -71,7 +72,7 @@ function PostRouterData($relativeUrl, $data, $askNewToken) {
             "113114" { writeOut "ERROR : INDEX GIVEN IS UNAVAILABLE" }            
             "113055" { writeOut "ERROR : INDEX GIVEN IS ALREADY SET AS READ" }
             default {
-                writeOut "UNKNOWN ERROR WITH API REQUEST : " $responseXML.error.code
+                writeOut "UNKNOWN ERROR WITH API REQUEST : " $responseXML.error
                 writeOut $relativeUrl $data
             }
         }
@@ -186,7 +187,6 @@ function DeleteAll($boxType) {
 }
 
 function SendSMS($number, $message) {
-    $message = $message -replace "_NL_", "`n"
     $data = "<request><Index>-1</Index><Phones><Phone>$number</Phone></Phones><Sca></Sca><Content>$message</Content><Length>$($message.Length)</Length><Reserved>1</Reserved><Date>$(Get-Date -Format "yyyy-MM-dd HH:mm:ss")</Date></request>"
     $response = PostRouterData "/api/sms/send-sms" $data $true
     return $response
@@ -200,8 +200,10 @@ function GetWifiStatus() {
 }
 
 function ChangeWifiStatus($status) {
-    $data = "<request><radios><radio><wifienable>$status</wifienable><index>0</index><ID>InternetGatewayDevice.X_Config.Wifi.Radio.1.</ID></radio><radio><wifienable>$status</wifienable><index>1</index><ID>InternetGatewayDevice.X_Config.Wifi.Radio.2.</ID></radio></radios><WifiRestart>1</WifiRestart></request>"
-    $response = PostRouterData "/api/wlan/status-switch-settings" $data $true
+    if (GetWifiStatus -ne $status) { # Prevent for switching in use
+        $data = "<request><radios><radio><wifienable>$status</wifienable><index>0</index><ID>InternetGatewayDevice.X_Config.Wifi.Radio.1.</ID></radio><radio><wifienable>$status</wifienable><index>1</index><ID>InternetGatewayDevice.X_Config.Wifi.Radio.2.</ID></radio></radios><WifiRestart>1</WifiRestart></request>"
+        $response = PostRouterData "/api/wlan/status-switch-settings" $data $true
+    }
 }
 
 function writeOut($text){
@@ -319,7 +321,7 @@ if ($args[0] -eq "send-sms") {
 
 # Création de la session
 $script:SESSION = New-Object System.Net.WebClient
-$script:SESSION.Encoding = [System.Text.Encoding]::UTF8 # Nécessaire pour l'envoi de caractères spéciaux dans les SMS
+$script:SESSION.Encoding = [System.Text.Encoding]::UTF8 # Necessaire pour l'envoi de caracteres speciaux dans les SMS
 
 # Ouverture de la session
 Login
@@ -334,7 +336,7 @@ switch ($args[0]) {
     "delete-sms" { DeleteSms $SMS_INDEX}
     "delete-all" { DeleteAll }
     "send-sms" { SendSMS $SMS_NUMBER $SMS_TEXT }
-    "get-wifi" { $status = GetWifiStatus; writeOut $status }
+    "get-wifi" { $status = GetWifiStatus; $status }
     "activate-wifi" {  ChangeWifiStatus "1" }
     "deactivate-wifi" { ChangeWifiStatus "0" }
     default {
