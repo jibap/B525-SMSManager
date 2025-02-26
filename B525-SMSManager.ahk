@@ -10,6 +10,8 @@ SendMode("Input")  ; Recommended for new scripts due to its superior speed and r
 SetWorkingDir(A_ScriptDir)  ; Ensures a consistent starting directory.
 
 OnMessage(0x404, clicOnNotif) ; CLIC sur la notif pour ouvrir la GUI
+OnMessage(0x404, OnTrayClick) ; Capture les événements liés au Tray
+
 
 ; IMPORT / EXPORT des fichiers annexes pour version compilée
 DirCreate("medias")
@@ -254,6 +256,14 @@ SendSMSGUI.OnEvent("Escape", SendSMSGUIGuiClose)
 ; #       ###   #   #   ###     #     ###    ###   #   #   ###
 
 
+
+OnTrayClick(wParam, lParam, msg, hwnd) {
+   	; 0x201 = clic gauche, 0x204 = clic droit
+    if (lParam = 0x201) {
+        refresh()
+    } 
+}
+
 ; POWERSHELL FUNCTIONS
 SendToPS(command) {
     global psShell
@@ -356,7 +366,6 @@ checkForWifiAutoOff(){
 		    autoWifiOffTime := StrReplace(autoWifiOff, ":", "")
 		    if (currentTime >= autoWifiOffTime) {
 		     	SwitchWifi()
-		     	boxIsReachable(false)
 		    }
 		}
 	}
@@ -564,7 +573,7 @@ SwitchWifi(*){
 		SwitchWifiButton.Enabled := false
 		trayMenu.Disable("3&") ; Wifi
 
-		refreshWifiStatus(true)
+		; refreshWifiStatus(true)
 
 		if(wifiStatus = 1){
 			TrayTip("Désactivation du WIFI...", "BOX 4G", 36)
@@ -579,6 +588,7 @@ SwitchWifi(*){
 		trayMenu.Enable("3&") ; Wifi
 
 		refreshWifiStatus(true)
+		boxIsReachable(false)
 	}
 }
 
@@ -641,7 +651,6 @@ createSmsList(boxType, SMSList){
 }
 
 OpenListSMSGUI(*){
-	refresh()
 	ListSMSGUIOpen()
 }
 
@@ -854,9 +863,6 @@ SendSMSGUIButtonEnvoi(*){
 ; # #    #   #  #  ##
 ; #  #   #   #  #   #
 ; #   #   ###   #   #
-
-; GET CURRENT WIFI STATUS BEFORE LOOP START
-refreshWifiStatus(true)
 
 Loop{
 	refresh()
