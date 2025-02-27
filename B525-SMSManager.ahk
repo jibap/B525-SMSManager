@@ -573,8 +573,6 @@ SwitchWifi(*){
 		SwitchWifiButton.Enabled := false
 		trayMenu.Disable("3&") ; Wifi
 
-		; refreshWifiStatus(true)
-
 		if(wifiStatus = 1){
 			TrayTip("Désactivation du WIFI...", "BOX 4G", 36)
 			runBoxCmd("deactivate-wifi")
@@ -834,14 +832,14 @@ SendSMSGUIButtonEnvoi(*){
 	msgResult := MsgBox("Le message suivant va être envoyé " dest " : `n`n « " messageToDest.Text " » `n `n Confirmer l'envoi ?", "Confirmation", 33)
 	if (msgResult = "OK")
 	{
-	; encodage des caractères à pb
-		message := StrReplace(messageToDest.Text, "`"", "&quot;")
-		message := StrReplace(message, ">", "&gt;")
-		message := StrReplace(message, "<", "&lt;")
-		message := StrReplace(message, "`r`n", "&#10;")
-		message := StrReplace(message, "&", "&amp;")
 		SendSMSGUI.Hide()
-		sendReturn := runBoxCmd("send-sms `"" message "`" `"" numberDest.Text "`"")
+		; Write SMS Text in temp file to avoid UTF8
+		tempFile := "sms.txt"
+		if(FileExist(tempFile)){
+			FileDelete tempFile
+		}
+		FileAppend messageToDest.Text, tempFile, "`n UTF-8"
+		sendReturn := runBoxCmd("send-sms `"" tempFile "`" `"" numberDest.Text "`"")
 		if(InStr(sendReturn, "<response>OK</response>")){
 			SplashTextGui := Gui("ToolWindow -Sysmenu Disabled", "BOX 4G : SMS"), SplashTextGui.Add("Text",, "Le message a bien été envoyé !"), SplashTextGui.Show("w200 h50")
 			Sleep(2000)
