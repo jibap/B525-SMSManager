@@ -1,5 +1,4 @@
 [Console]::OutputEncoding = [Text.UTF8Encoding]::UTF8
-[Console]::InputEncoding = [Text.UTF8Encoding]::UTF8
 
 ############################
 ####     FONCTIONS      ####
@@ -186,9 +185,11 @@ function DeleteAll($boxType) {
     DeleteSmsType 2 #envoyés
 }
 
-function SendSMS($number, $message) {
+function SendSMS($message, $number) {
+    $message = $message -replace "&","&amp;" -replace ">", "&gt;" -replace "<", "&lt;" -replace "`r`n", "&#10;"           
     $data = "<request><Index>-1</Index><Phones><Phone>$number</Phone></Phones><Sca></Sca><Content>$message</Content><Length>$($message.Length)</Length><Reserved>1</Reserved><Date>$(Get-Date -Format "yyyy-MM-dd HH:mm:ss")</Date></request>"
     $response = PostRouterData "/api/sms/send-sms" $data $true
+
     return $response
 }
 
@@ -259,7 +260,7 @@ Commands:
     get-wifi
     activate-wifi
     deactivate-wifi
-    send-sms <Message> <Numero>"
+    send-sms <Message|sms.txt> <Numero>"
 
 if ($args.Count -lt 1) {
     writeOut "ERROR: At least 1 parameter required"
@@ -309,6 +310,11 @@ if ($args[0] -eq "send-sms") {
         exit
     } else {
         $SMS_TEXT = $args[1]
+        $SMS_FILE = "sms.txt"
+        if ($SMS_TEXT -eq $SMS_FILE -and (Test-Path $SMS_FILE)){
+            $SMS_TEXT = Get-Content $SMS_FILE
+            Remove-Item $SMS_FILE -Force -ErrorAction SilentlyContinue
+        }
     }
 
     if (-not $args[2]) {
@@ -319,13 +325,13 @@ if ($args[0] -eq "send-sms") {
     }
 }
 
+
 # Création de la session
 $script:SESSION = New-Object System.Net.WebClient
 $script:SESSION.Encoding = [System.Text.Encoding]::UTF8 # Necessaire pour l'envoi de caracteres speciaux dans les SMS
 
 # Ouverture de la session
 Login
-
 
 switch ($args[0]) {
     "get-count" { GetCount $BOX_TYPE }
@@ -335,7 +341,7 @@ switch ($args[0]) {
     "delete-sms-type" { DeleteSmsType $BOX_TYPE }
     "delete-sms" { DeleteSms $SMS_INDEX}
     "delete-all" { DeleteAll }
-    "send-sms" { SendSMS $SMS_NUMBER $SMS_TEXT }
+    "send-sms" { SendSMS $SMS_TEXT $SMS_NUMBER }
     "get-wifi" { $status = GetWifiStatus; $status }
     "activate-wifi" {  ChangeWifiStatus "1" }
     "deactivate-wifi" { ChangeWifiStatus "0" }
